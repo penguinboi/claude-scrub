@@ -250,3 +250,75 @@ class TestScanCommand(unittest.TestCase):
         output = cs.format_scan_report(results, verbose=True)
         self.assertIn("abc123.jsonl", output)
         self.assertIn("Line", output)
+
+
+class TestScrubCommand(unittest.TestCase):
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.claude_dir = Path(self.tmpdir) / ".claude"
+        self.no_ccrider = Path(self.tmpdir) / "no-ccrider.db"
+        proj = self.claude_dir / "projects" / "-Users-test-Code-myapp"
+        proj.mkdir(parents=True)
+
+        self.secret_file = proj / "abc123.jsonl"
+        self.secret_file.write_text(
+            '{"message":"key is AKIAIOSFODNN7EXAMPLE here"}\n'
+            '{"message":"clean line"}\n'
+        )
+
+        self.history = self.claude_dir / "history.jsonl"
+        self.history.write_text('{"prompt":"token=ghp_ABCDEFghijklmnopqrst1234567890ab"}\n')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_scrub_replaces_secrets_in_files(self):
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        stats = cs.scrub_targets(targets, patterns)
+        content = self.secret_file.read_text()
+        self.assertNotIn("AKIAIOSFODNN7EXAMPLE", content)
+        self.assertIn("[REDACTED:", content)
+        self.assertIn("clean line", content)
+
+    def test_scrub_replaces_secrets_in_history(self):
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        cs.scrub_targets(targets, patterns)
+        content = self.history.read_text()
+        self.assertNotIn("ghp_ABCDEF", content)
+        self.assertIn("[REDACTED:", content)
+
+    def test_scrub_returns_stats(self):
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        stats = cs.scrub_targets(targets, patterns)
+        self.assertGreater(stats["total_secrets"], 0)
+        self.assertGreater(stats["total_files"], 0)
+
+    def test_scrub_respects_include_filter(self):
+        paste_dir = self.claude_dir / "paste-cache"
+        paste_dir.mkdir()
+        paste_file = paste_dir / "paste1.txt"
+        paste_file.write_text("secret: AKIAIOSFODNN7EXAMPLE")
+
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+
+        default_targets = cs.filter_scrub_targets(targets, include="")
+        self.assertEqual(len(default_targets["paste_cache"]), 0)
+
+        included_targets = cs.filter_scrub_targets(targets, include="paste-cache")
+        self.assertEqual(len(included_targets["paste_cache"]), 1)
+
+    def test_scrub_idempotent(self):
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        cs.scrub_targets(targets, patterns)
+        content_after_first = self.secret_file.read_text()
+
+        targets2 = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        cs.scrub_targets(targets2, patterns)
+        content_after_second = self.secret_file.read_text()
+
+        self.assertEqual(content_after_first, content_after_second)

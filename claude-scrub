@@ -203,6 +203,48 @@ def scan_targets(targets, patterns):
     return results
 
 
+def filter_scrub_targets(targets, include=""):
+    """Filter targets for scrub: sessions/indexes/history always included.
+
+    Optional categories (paste-cache, file-history, ccrider) are only
+    included when named in the comma-separated include string.
+    """
+    included = set(s.strip() for s in include.split(",") if s.strip())
+    return {
+        "sessions": targets.get("sessions", []),
+        "indexes": targets.get("indexes", []),
+        "history": targets.get("history", []),
+        "paste_cache": targets["paste_cache"] if "paste-cache" in included else [],
+        "file_history": targets["file_history"] if "file-history" in included else [],
+        "ccrider": targets["ccrider"] if "ccrider" in included else [],
+    }
+
+
+def scrub_targets(targets, patterns):
+    """Replace secrets in-place across all target files.
+
+    Returns stats dict with total_secrets, total_files, and per-category counts.
+    """
+    stats = {"total_secrets": 0, "total_files": 0, "categories": {}}
+    for category, files in targets.items():
+        cat_secrets = 0
+        cat_files = 0
+        for filepath in files:
+            try:
+                original = filepath.read_text(errors="replace")
+            except OSError:
+                continue
+            scrubbed = redact_secrets(original, patterns)
+            if scrubbed != original:
+                filepath.write_text(scrubbed)
+                cat_files += 1
+                cat_secrets += len(find_secrets(original, patterns))
+        stats["categories"][category] = {"secrets": cat_secrets, "files": cat_files}
+        stats["total_secrets"] += cat_secrets
+        stats["total_files"] += cat_files
+    return stats
+
+
 def format_scan_report(results, verbose=False):
     """Format scan results as a human-readable report.
 
@@ -821,7 +863,27 @@ def cmd_scan(args):
 
 def cmd_scrub(args):
     """Remove secrets from session data."""
-    print("scrub: not yet implemented", file=sys.stderr)
+    patterns = get_builtin_patterns()
+    all_targets = discover_targets(CLAUDE_DIR)
+    scan_results = scan_targets(all_targets, patterns)
+    print(format_scan_report(scan_results, verbose=args.verbose))
+
+    total = sum(sum(len(m) for m in cat.values()) for cat in scan_results.values())
+    if total == 0:
+        print("\nNo secrets found. Nothing to scrub.")
+        return
+
+    include = args.include if args.include else ""
+    scrub_filtered = filter_scrub_targets(all_targets, include=include)
+
+    if not args.yes:
+        answer = input(f"\nScrub {total} secrets? This cannot be undone. [y/N] ")
+        if answer.lower() != "y":
+            print("Aborted.")
+            return
+
+    stats = scrub_targets(scrub_filtered, patterns)
+    print(f"\nScrubbed {stats['total_secrets']} secrets across {stats['total_files']} files.")
 
 
 def main():
