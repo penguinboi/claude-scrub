@@ -129,6 +129,9 @@ def redact_secrets(text, patterns):
 CONFIG_DIR = Path.home() / ".config" / "claude-scrub"
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 
+PATTERNS_DB_TOML_URL = "https://raw.githubusercontent.com/mazen160/secrets-patterns-db/master/db/gitleaks/gitleaks.toml"
+PATTERNS_DB_CACHE = CONFIG_DIR / "patterns-db" / "gitleaks.toml"
+
 
 def parse_simple_toml(text):
     """Parse a minimal TOML subset supporting [[array]] tables and string values."""
@@ -191,12 +194,59 @@ def load_custom_patterns(config_path):
     return patterns
 
 
-def load_all_patterns():
+def load_patterns_db(toml_path):
+    """Load patterns from a gitleaks-format TOML file.
+
+    Gitleaks format uses [[rules]] with id, description, and regex fields.
+    """
+    if not toml_path.is_file():
+        return []
+    try:
+        text = toml_path.read_text()
+    except OSError:
+        return []
+    data = parse_simple_toml(text)
+    patterns = []
+    for rule in data.get("rules", []):
+        name = rule.get("description", rule.get("id", "unknown"))
+        regex_str = rule.get("regex", "")
+        if not regex_str:
+            continue
+        try:
+            compiled = re.compile(regex_str)
+            patterns.append({"name": name, "regex": compiled})
+        except re.error:
+            continue  # Skip invalid silently for bulk import
+    return patterns
+
+
+def download_patterns_db():
+    """Download secrets-patterns-db gitleaks TOML to local cache."""
+    import urllib.request
+    PATTERNS_DB_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Downloading patterns-db to {PATTERNS_DB_CACHE}...")
+    try:
+        urllib.request.urlretrieve(PATTERNS_DB_TOML_URL, PATTERNS_DB_CACHE)
+        print("Downloaded successfully.")
+    except Exception as e:
+        print(f"Error downloading patterns-db: {e}", file=sys.stderr)
+        return False
+    return True
+
+
+def load_all_patterns(use_patterns_db=False):
     """Return built-in patterns merged with any user-defined custom patterns."""
     patterns = get_builtin_patterns()
     custom = load_custom_patterns(CONFIG_FILE)
     if custom:
         patterns.extend(custom)
+    if use_patterns_db:
+        if not PATTERNS_DB_CACHE.is_file():
+            download_patterns_db()
+        db_patterns = load_patterns_db(PATTERNS_DB_CACHE)
+        if db_patterns:
+            patterns.extend(db_patterns)
+            print(f"Loaded {len(db_patterns)} patterns from patterns-db", file=sys.stderr)
     return patterns
 
 
@@ -929,7 +979,7 @@ def cmd_sessions(args):
 
 def cmd_scan(args):
     """Scan sessions for secrets."""
-    patterns = load_all_patterns()
+    patterns = load_all_patterns(use_patterns_db=args.patterns_db)
     targets = discover_targets(CLAUDE_DIR)
     results = scan_targets(targets, patterns)
     print(format_scan_report(results, verbose=args.verbose))
@@ -937,7 +987,7 @@ def cmd_scan(args):
 
 def cmd_scrub(args):
     """Remove secrets from session data."""
-    patterns = load_all_patterns()
+    patterns = load_all_patterns(use_patterns_db=args.patterns_db)
     all_targets = discover_targets(CLAUDE_DIR)
     scan_results = scan_targets(all_targets, patterns)
     print(format_scan_report(scan_results, verbose=args.verbose))

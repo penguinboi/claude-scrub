@@ -381,3 +381,47 @@ class TestCustomPatterns(unittest.TestCase):
         patterns = cs.load_custom_patterns(config)
         self.assertEqual(len(patterns), 1)
         self.assertEqual(patterns[0]["name"], "Good One")
+
+
+class TestPatternsDB(unittest.TestCase):
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.cache_dir = Path(self.tmpdir) / "patterns-db"
+        self.cache_dir.mkdir()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_parse_gitleaks_format(self):
+        gitleaks_toml = (
+            '[[rules]]\n'
+            'id = "aws-access-key"\n'
+            'description = "AWS Access Key"\n'
+            'regex = "(?:AKIA|ASIA)[0-9A-Z]{16}"\n'
+            '\n'
+            '[[rules]]\n'
+            'id = "github-pat"\n'
+            'description = "GitHub PAT"\n'
+            'regex = "ghp_[A-Za-z0-9_]{36}"\n'
+        )
+        (self.cache_dir / "gitleaks.toml").write_text(gitleaks_toml)
+        patterns = cs.load_patterns_db(self.cache_dir / "gitleaks.toml")
+        self.assertEqual(len(patterns), 2)
+        self.assertEqual(patterns[0]["name"], "AWS Access Key")
+        self.assertEqual(patterns[1]["name"], "GitHub PAT")
+
+    def test_parse_gitleaks_invalid_regex(self):
+        gitleaks_toml = (
+            '[[rules]]\n'
+            'id = "bad"\n'
+            'description = "Bad Pattern"\n'
+            'regex = "[invalid((regex"\n'
+        )
+        (self.cache_dir / "gitleaks.toml").write_text(gitleaks_toml)
+        patterns = cs.load_patterns_db(self.cache_dir / "gitleaks.toml")
+        self.assertEqual(len(patterns), 0)
+
+    def test_load_patterns_db_missing_file(self):
+        patterns = cs.load_patterns_db(self.cache_dir / "nonexistent.toml")
+        self.assertEqual(len(patterns), 0)
