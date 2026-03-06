@@ -101,6 +101,25 @@ class TestPatternEngine(unittest.TestCase):
         matches = cs.find_secrets("hello world\nno secrets here", patterns)
         self.assertEqual(len(matches), 0)
 
+    def test_find_secrets_deduplicates_generic_when_specific_matches(self):
+        """Generic Secret Assignment should be suppressed when a specific pattern matches same text."""
+        # "token = glpat-ABCDEFGHIJ1234567890" matches both GitLab Token and Generic Secret Assignment
+        text = "token = glpat-ABCDEFGHIJ1234567890"
+        patterns = cs.get_builtin_patterns()
+        matches = cs.find_secrets(text, patterns)
+        names = [m[0] for m in matches]
+        self.assertIn("GitLab Token", names)
+        self.assertNotIn("Generic Secret Assignment", names)
+        self.assertEqual(len(matches), 1)
+
+    def test_find_secrets_keeps_generic_when_no_specific_matches(self):
+        """Generic Secret Assignment should remain when no specific pattern matches."""
+        text = "secret = mysuperlong_internal_key_value_here"
+        patterns = cs.get_builtin_patterns()
+        matches = cs.find_secrets(text, patterns)
+        names = [m[0] for m in matches]
+        self.assertIn("Generic Secret Assignment", names)
+
     def test_redact_secrets_replaces_with_pattern_name(self):
         text = "key is AKIAIOSFODNN7EXAMPLE"
         patterns = cs.get_builtin_patterns()

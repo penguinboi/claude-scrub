@@ -108,14 +108,39 @@ def get_builtin_patterns():
 SECRET_PATTERNS = [p["regex"] for p in get_builtin_patterns()]
 
 
+GENERIC_PATTERNS = {
+    "Bearer Token",
+    "Authorization Header",
+    "Generic Secret Assignment",
+    "Password in URL",
+    "Cloudinary URL",
+}
+
+
 def find_secrets(text, patterns):
-    """Find all secret matches in text, returning (pattern_name, match_text, line_num) tuples."""
+    """Find all secret matches in text, returning (pattern_name, match_text, line_num) tuples.
+
+    Deduplicates overlapping matches: when a specific pattern and a generic
+    catch-all pattern both match overlapping text on the same line, the generic
+    match is dropped to avoid double-counting.
+    """
     matches = []
     lines = text.split("\n")
     for line_num, line in enumerate(lines, start=1):
+        # Collect all matches on this line as (name, start, end, match_text)
+        line_matches = []
         for p in patterns:
             for m in p["regex"].finditer(line):
-                matches.append((p["name"], m.group(), line_num))
+                line_matches.append((p["name"], m.start(), m.end(), m.group()))
+
+        # Remove generic matches that overlap with any specific match
+        specific = [(n, s, e) for n, s, e, _ in line_matches if n not in GENERIC_PATTERNS]
+        for name, start, end, match_text in line_matches:
+            if name in GENERIC_PATTERNS:
+                # Drop if any specific match overlaps this span
+                if any(s < end and e > start for _, s, e in specific):
+                    continue
+            matches.append((name, match_text, line_num))
     return matches
 
 
