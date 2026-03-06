@@ -306,17 +306,22 @@ def discover_targets(claude_dir, ccrider_db=None):
     return targets
 
 
+CATEGORY_ORDER = ("sessions", "indexes", "history", "paste_cache", "file_history", "ccrider")
+
+
 def scan_targets(targets, patterns, show_progress=False):
     """Scan all target files for secrets, returning per-category results.
 
     Returns {category: {filepath: [(name, match_text, line_num), ...], ...}, ...}.
     Files with no matches are omitted from the inner dict.
+    When show_progress is True, prints each category result to stdout in real time.
     """
     results = {}
-    for category, files in targets.items():
+    for category in CATEGORY_ORDER:
+        files = targets.get(category, [])
+        label = CATEGORY_LABELS.get(category, category)
         if show_progress and files:
-            label = CATEGORY_LABELS.get(category, category)
-            print(f"  {label}...", end="", flush=True, file=sys.stderr)
+            print(f"  {label}...", end="", flush=True)
         file_matches = {}
         for filepath in files:
             try:
@@ -326,10 +331,16 @@ def scan_targets(targets, patterns, show_progress=False):
             matches = find_secrets(text, patterns)
             if matches:
                 file_matches[filepath] = matches
-        if show_progress and files:
-            secret_count = sum(len(m) for m in file_matches.values())
-            print(f" {len(files)} files, {secret_count} secrets", file=sys.stderr)
         results[category] = file_matches
+        if show_progress:
+            scanned = len(files)
+            secret_count = sum(len(m) for m in file_matches.values())
+            file_noun = "file" if scanned == 1 else "files"
+            noun = "secret" if secret_count == 1 else "secrets"
+            if files:
+                print(f"\r{label + ':':<16}{scanned} {file_noun} scanned, {secret_count} {noun} found")
+            else:
+                print(f"{label + ':':<16}0 files scanned, 0 secrets found")
     return results
 
 
@@ -994,18 +1005,30 @@ def cmd_scan(args):
     """Scan sessions for secrets."""
     patterns = load_all_patterns(use_patterns_db=args.patterns_db)
     targets = discover_targets(CLAUDE_DIR)
-    progress = sys.stderr.isatty()
-    results = scan_targets(targets, patterns, show_progress=progress)
-    print(format_scan_report(results, verbose=args.verbose, targets=targets))
+    print("Scanning Claude Code data...\n")
+    results = scan_targets(targets, patterns, show_progress=True)
+    # Print totals and verbose detail
+    total_secrets = sum(sum(len(m) for m in cat.values()) for cat in results.values())
+    total_files = sum(len(targets[c]) for c in CATEGORY_ORDER if c in targets)
+    print(f"\nTotal: {total_secrets} {'secret' if total_secrets == 1 else 'secrets'} found across {total_files} {'file' if total_files == 1 else 'files'}")
+    if args.verbose:
+        for category in CATEGORY_ORDER:
+            file_results = results.get(category, {})
+            if file_results:
+                for filepath, matches in sorted(file_results.items(), key=lambda x: str(x[0])):
+                    short = shorten_project(str(filepath))
+                    print(f"  {short}: {len(matches)} secrets")
+                    for name, match_text, line_num in matches:
+                        preview = match_text[:20] + "..." if len(match_text) > 20 else match_text
+                        print(f"    Line {line_num}: {name} ({preview})")
 
 
 def cmd_scrub(args):
     """Remove secrets from session data."""
     patterns = load_all_patterns(use_patterns_db=args.patterns_db)
     all_targets = discover_targets(CLAUDE_DIR)
-    progress = sys.stderr.isatty()
-    scan_results = scan_targets(all_targets, patterns, show_progress=progress)
-    print(format_scan_report(scan_results, verbose=args.verbose, targets=all_targets))
+    print("Scanning Claude Code data...\n")
+    scan_results = scan_targets(all_targets, patterns, show_progress=True)
 
     total = sum(sum(len(m) for m in cat.values()) for cat in scan_results.values())
     if total == 0:
