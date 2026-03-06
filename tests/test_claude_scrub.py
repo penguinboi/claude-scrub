@@ -3,7 +3,9 @@
 
 import importlib.machinery
 import importlib.util
+import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -111,3 +113,73 @@ class TestPatternEngine(unittest.TestCase):
         result = cs.scrub_secrets(text)
         self.assertNotIn("sk-ant-api03", result)
         self.assertIn("[REDACTED]", result)
+
+
+class TestFileDiscovery(unittest.TestCase):
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.claude_dir = Path(self.tmpdir) / ".claude"
+
+        proj = self.claude_dir / "projects" / "-Users-test-Code-myapp"
+        proj.mkdir(parents=True)
+        (proj / "abc123.jsonl").write_text('{"type":"user"}\n')
+        (proj / "def456.jsonl").write_text('{"type":"user"}\n')
+        (proj / "sessions-index.json").write_text('{"entries":[]}')
+
+        (self.claude_dir / "history.jsonl").write_text('{"prompt":"hello"}\n')
+
+        paste = self.claude_dir / "paste-cache"
+        paste.mkdir()
+        (paste / "paste1.txt").write_text("some pasted content")
+
+        fh = self.claude_dir / "file-history"
+        fh.mkdir()
+        (fh / "snapshot1.txt").write_text("some code")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_discover_returns_all_categories(self):
+        targets = cs.discover_targets(self.claude_dir)
+        self.assertIn("sessions", targets)
+        self.assertIn("indexes", targets)
+        self.assertIn("history", targets)
+        self.assertIn("paste_cache", targets)
+        self.assertIn("file_history", targets)
+
+    def test_discover_finds_session_jsonl_files(self):
+        targets = cs.discover_targets(self.claude_dir)
+        self.assertEqual(len(targets["sessions"]), 2)
+
+    def test_discover_finds_index_files(self):
+        targets = cs.discover_targets(self.claude_dir)
+        self.assertEqual(len(targets["indexes"]), 1)
+
+    def test_discover_finds_history(self):
+        targets = cs.discover_targets(self.claude_dir)
+        self.assertEqual(len(targets["history"]), 1)
+
+    def test_discover_finds_paste_cache(self):
+        targets = cs.discover_targets(self.claude_dir)
+        self.assertEqual(len(targets["paste_cache"]), 1)
+
+    def test_discover_finds_file_history(self):
+        targets = cs.discover_targets(self.claude_dir)
+        self.assertEqual(len(targets["file_history"]), 1)
+
+    def test_discover_handles_missing_dirs(self):
+        empty = Path(self.tmpdir) / "empty-claude"
+        empty.mkdir()
+        no_db = Path(self.tmpdir) / "nonexistent" / "sessions.db"
+        targets = cs.discover_targets(empty, ccrider_db=no_db)
+        for category in targets.values():
+            self.assertEqual(len(category), 0)
+
+    def test_discover_finds_ccrider_db(self):
+        ccrider_dir = Path(self.tmpdir) / ".config" / "ccrider"
+        ccrider_dir.mkdir(parents=True)
+        db = ccrider_dir / "sessions.db"
+        db.write_text("fake db")
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=db)
+        self.assertEqual(len(targets["ccrider"]), 1)

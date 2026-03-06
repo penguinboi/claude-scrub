@@ -126,6 +126,52 @@ def redact_secrets(text, patterns):
     return text
 
 
+def discover_targets(claude_dir, ccrider_db=None):
+    """Discover all Claude Code data files, categorized by type."""
+    targets = {
+        "sessions": [],
+        "indexes": [],
+        "history": [],
+        "paste_cache": [],
+        "file_history": [],
+        "ccrider": [],
+    }
+
+    projects_dir = claude_dir / "projects"
+    if projects_dir.is_dir():
+        for project_dir in projects_dir.iterdir():
+            if not project_dir.is_dir():
+                continue
+            for f in project_dir.iterdir():
+                if f.suffix == ".jsonl" and f.is_file():
+                    targets["sessions"].append(f)
+                elif f.name == "sessions-index.json" and f.is_file():
+                    targets["indexes"].append(f)
+
+    history = claude_dir / "history.jsonl"
+    if history.is_file():
+        targets["history"].append(history)
+
+    paste_dir = claude_dir / "paste-cache"
+    if paste_dir.is_dir():
+        for f in paste_dir.iterdir():
+            if f.is_file():
+                targets["paste_cache"].append(f)
+
+    fh_dir = claude_dir / "file-history"
+    if fh_dir.is_dir():
+        for f in fh_dir.iterdir():
+            if f.is_file():
+                targets["file_history"].append(f)
+
+    if ccrider_db is None:
+        ccrider_db = Path.home() / ".config" / "ccrider" / "sessions.db"
+    if ccrider_db.is_file():
+        targets["ccrider"].append(ccrider_db)
+
+    return targets
+
+
 # ---------------------------------------------------------------------------
 # Data loading (shared between interactive and print modes)
 # ---------------------------------------------------------------------------
