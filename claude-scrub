@@ -306,7 +306,7 @@ def discover_targets(claude_dir, ccrider_db=None):
     return targets
 
 
-def scan_targets(targets, patterns):
+def scan_targets(targets, patterns, show_progress=False):
     """Scan all target files for secrets, returning per-category results.
 
     Returns {category: {filepath: [(name, match_text, line_num), ...], ...}, ...}.
@@ -314,6 +314,9 @@ def scan_targets(targets, patterns):
     """
     results = {}
     for category, files in targets.items():
+        if show_progress and files:
+            label = CATEGORY_LABELS.get(category, category)
+            print(f"  {label}...", end="", flush=True, file=sys.stderr)
         file_matches = {}
         for filepath in files:
             try:
@@ -323,6 +326,9 @@ def scan_targets(targets, patterns):
             matches = find_secrets(text, patterns)
             if matches:
                 file_matches[filepath] = matches
+        if show_progress and files:
+            secret_count = sum(len(m) for m in file_matches.values())
+            print(f" {len(files)} files, {secret_count} secrets", file=sys.stderr)
         results[category] = file_matches
     return results
 
@@ -988,7 +994,8 @@ def cmd_scan(args):
     """Scan sessions for secrets."""
     patterns = load_all_patterns(use_patterns_db=args.patterns_db)
     targets = discover_targets(CLAUDE_DIR)
-    results = scan_targets(targets, patterns)
+    progress = sys.stderr.isatty()
+    results = scan_targets(targets, patterns, show_progress=progress)
     print(format_scan_report(results, verbose=args.verbose, targets=targets))
 
 
@@ -996,7 +1003,8 @@ def cmd_scrub(args):
     """Remove secrets from session data."""
     patterns = load_all_patterns(use_patterns_db=args.patterns_db)
     all_targets = discover_targets(CLAUDE_DIR)
-    scan_results = scan_targets(all_targets, patterns)
+    progress = sys.stderr.isatty()
+    scan_results = scan_targets(all_targets, patterns, show_progress=progress)
     print(format_scan_report(scan_results, verbose=args.verbose, targets=all_targets))
 
     total = sum(sum(len(m) for m in cat.values()) for cat in scan_results.values())
