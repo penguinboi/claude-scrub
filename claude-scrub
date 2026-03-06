@@ -126,6 +126,16 @@ def redact_secrets(text, patterns):
     return text
 
 
+CATEGORY_LABELS = {
+    "sessions": "Sessions",
+    "indexes": "Index files",
+    "history": "History",
+    "paste_cache": "Paste cache",
+    "file_history": "File history",
+    "ccrider": "ccrider DB",
+}
+
+
 def discover_targets(claude_dir, ccrider_db=None):
     """Discover all Claude Code data files, categorized by type."""
     targets = {
@@ -170,6 +180,62 @@ def discover_targets(claude_dir, ccrider_db=None):
         targets["ccrider"].append(ccrider_db)
 
     return targets
+
+
+def scan_targets(targets, patterns):
+    """Scan all target files for secrets, returning per-category results.
+
+    Returns {category: {filepath: [(name, match_text, line_num), ...], ...}, ...}.
+    Files with no matches are omitted from the inner dict.
+    """
+    results = {}
+    for category, files in targets.items():
+        file_matches = {}
+        for filepath in files:
+            try:
+                text = filepath.read_text(errors="replace")
+            except OSError:
+                continue
+            matches = find_secrets(text, patterns)
+            if matches:
+                file_matches[filepath] = matches
+        results[category] = file_matches
+    return results
+
+
+def format_scan_report(results, verbose=False):
+    """Format scan results as a human-readable report.
+
+    Default mode shows per-category summary. Verbose mode adds per-file
+    detail with line numbers.
+    """
+    lines = []
+    total_secrets = 0
+    total_files = 0
+
+    for category, file_matches in results.items():
+        label = CATEGORY_LABELS.get(category, category)
+        cat_secrets = sum(len(m) for m in file_matches.values())
+        cat_files = len(file_matches)
+        total_secrets += cat_secrets
+        total_files += cat_files
+
+        if cat_secrets > 0:
+            lines.append(f"  {label + ':':<16} {cat_files} file{'s' if cat_files != 1 else ''} with {cat_secrets} secret{'s' if cat_secrets != 1 else ''}")
+
+            if verbose:
+                for filepath, matches in sorted(file_matches.items(), key=lambda x: str(x[0])):
+                    short = shorten_project(str(filepath))
+                    lines.append(f"    {short}")
+                    for name, _match_text, line_num in matches:
+                        lines.append(f"      Line {line_num}: {name}")
+                lines.append("")
+
+    if not verbose and lines:
+        lines.append("")
+
+    lines.append(f"Total: {total_secrets} secrets found across {total_files} file{'s' if total_files != 1 else ''}")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -747,7 +813,10 @@ def cmd_sessions(args):
 
 def cmd_scan(args):
     """Scan sessions for secrets."""
-    print("scan: not yet implemented", file=sys.stderr)
+    patterns = get_builtin_patterns()
+    targets = discover_targets(CLAUDE_DIR)
+    results = scan_targets(targets, patterns)
+    print(format_scan_report(results, verbose=args.verbose))
 
 
 def cmd_scrub(args):

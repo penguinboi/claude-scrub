@@ -183,3 +183,70 @@ class TestFileDiscovery(unittest.TestCase):
         db.write_text("fake db")
         targets = cs.discover_targets(self.claude_dir, ccrider_db=db)
         self.assertEqual(len(targets["ccrider"]), 1)
+
+
+class TestScanCommand(unittest.TestCase):
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.claude_dir = Path(self.tmpdir) / ".claude"
+        self.no_ccrider = Path(self.tmpdir) / "nonexistent" / "sessions.db"
+        proj = self.claude_dir / "projects" / "-Users-test-Code-myapp"
+        proj.mkdir(parents=True)
+
+        (proj / "abc123.jsonl").write_text(
+            '{"message":"my key is AKIAIOSFODNN7EXAMPLE"}\n'
+            '{"message":"also sk_live_abcdefghij1234567890"}\n'
+        )
+        (proj / "clean.jsonl").write_text('{"message":"nothing secret here"}\n')
+        (self.claude_dir / "history.jsonl").write_text(
+            '{"prompt":"set token=ghp_ABCDEFghijklmnopqrst1234567890ab"}\n'
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_scan_returns_results_per_category(self):
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results = cs.scan_targets(targets, patterns)
+        self.assertIn("sessions", results)
+        self.assertIn("history", results)
+
+    def test_scan_counts_secrets_in_sessions(self):
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results = cs.scan_targets(targets, patterns)
+        total = sum(len(m) for m in results["sessions"].values())
+        self.assertGreaterEqual(total, 2)
+
+    def test_scan_counts_secrets_in_history(self):
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results = cs.scan_targets(targets, patterns)
+        total = sum(len(m) for m in results["history"].values())
+        self.assertGreaterEqual(total, 1)
+
+    def test_scan_clean_files_have_no_matches(self):
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results = cs.scan_targets(targets, patterns)
+        clean_file = self.claude_dir / "projects" / "-Users-test-Code-myapp" / "clean.jsonl"
+        matches = results["sessions"].get(clean_file, [])
+        self.assertEqual(len(matches), 0)
+
+    def test_format_scan_summary(self):
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results = cs.scan_targets(targets, patterns)
+        output = cs.format_scan_report(results, verbose=False)
+        self.assertIn("secrets found", output.lower())
+        self.assertIn("Total:", output)
+
+    def test_format_scan_verbose(self):
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results = cs.scan_targets(targets, patterns)
+        output = cs.format_scan_report(results, verbose=True)
+        self.assertIn("abc123.jsonl", output)
+        self.assertIn("Line", output)
