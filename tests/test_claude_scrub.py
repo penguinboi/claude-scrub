@@ -322,3 +322,62 @@ class TestScrubCommand(unittest.TestCase):
         content_after_second = self.secret_file.read_text()
 
         self.assertEqual(content_after_first, content_after_second)
+
+
+class TestCustomPatterns(unittest.TestCase):
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.config_dir = Path(self.tmpdir) / ".config" / "claude-scrub"
+        self.config_dir.mkdir(parents=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_load_custom_patterns_from_toml(self):
+        config = self.config_dir / "config.toml"
+        config.write_text(
+            '[[patterns]]\n'
+            'name = "Internal Key"\n'
+            'regex = "myco_[a-zA-Z0-9]{32}"\n'
+            '\n'
+            '[[patterns]]\n'
+            'name = "DB URL"\n'
+            'regex = "postgres://[^\\\\s]+"\n'
+        )
+        patterns = cs.load_custom_patterns(config)
+        self.assertEqual(len(patterns), 2)
+        self.assertEqual(patterns[0]["name"], "Internal Key")
+        self.assertIsNotNone(patterns[0]["regex"].pattern)
+
+    def test_load_custom_patterns_missing_file(self):
+        patterns = cs.load_custom_patterns(self.config_dir / "nonexistent.toml")
+        self.assertEqual(len(patterns), 0)
+
+    def test_custom_pattern_matches(self):
+        config = self.config_dir / "config.toml"
+        config.write_text(
+            '[[patterns]]\n'
+            'name = "Internal Key"\n'
+            'regex = "myco_[a-zA-Z0-9]{32}"\n'
+        )
+        custom = cs.load_custom_patterns(config)
+        text = "key=myco_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
+        matches = cs.find_secrets(text, custom)
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0][0], "Internal Key")
+
+    def test_invalid_regex_skipped(self):
+        config = self.config_dir / "config.toml"
+        config.write_text(
+            '[[patterns]]\n'
+            'name = "Bad Regex"\n'
+            'regex = "[invalid(("\n'
+            '\n'
+            '[[patterns]]\n'
+            'name = "Good One"\n'
+            'regex = "good_[a-z]+"\n'
+        )
+        patterns = cs.load_custom_patterns(config)
+        self.assertEqual(len(patterns), 1)
+        self.assertEqual(patterns[0]["name"], "Good One")

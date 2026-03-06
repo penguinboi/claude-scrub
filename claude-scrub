@@ -126,6 +126,80 @@ def redact_secrets(text, patterns):
     return text
 
 
+CONFIG_DIR = Path.home() / ".config" / "claude-scrub"
+CONFIG_FILE = CONFIG_DIR / "config.toml"
+
+
+def parse_simple_toml(text):
+    """Parse a minimal TOML subset supporting [[array]] tables and string values."""
+    try:
+        import tomllib
+        return tomllib.loads(text)
+    except ImportError:
+        pass
+
+    result = {}
+    current_array_key = None
+    current_item = None
+
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("[[") and line.endswith("]]"):
+            if current_item is not None and current_array_key is not None:
+                result.setdefault(current_array_key, []).append(current_item)
+            current_array_key = line[2:-2].strip()
+            current_item = {}
+            continue
+        if "=" in line and current_item is not None:
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip()
+            if (val.startswith('"') and val.endswith('"')) or \
+               (val.startswith("'") and val.endswith("'")):
+                val = val[1:-1]
+            val = val.replace("\\\\", "\x00").replace("\\n", "\n").replace("\\t", "\t").replace("\x00", "\\")
+            current_item[key] = val
+
+    if current_item is not None and current_array_key is not None:
+        result.setdefault(current_array_key, []).append(current_item)
+
+    return result
+
+
+def load_custom_patterns(config_path):
+    """Load user-defined secret patterns from a TOML config file."""
+    if not config_path.is_file():
+        return []
+    try:
+        text = config_path.read_text()
+    except OSError:
+        return []
+    data = parse_simple_toml(text)
+    patterns = []
+    for entry in data.get("patterns", []):
+        name = entry.get("name", "")
+        regex_str = entry.get("regex", "")
+        if not name or not regex_str:
+            continue
+        try:
+            compiled = re.compile(regex_str)
+            patterns.append({"name": name, "regex": compiled})
+        except re.error:
+            print(f"Warning: invalid regex for pattern '{name}', skipping", file=sys.stderr)
+    return patterns
+
+
+def load_all_patterns():
+    """Return built-in patterns merged with any user-defined custom patterns."""
+    patterns = get_builtin_patterns()
+    custom = load_custom_patterns(CONFIG_FILE)
+    if custom:
+        patterns.extend(custom)
+    return patterns
+
+
 CATEGORY_LABELS = {
     "sessions": "Sessions",
     "indexes": "Index files",
@@ -855,7 +929,7 @@ def cmd_sessions(args):
 
 def cmd_scan(args):
     """Scan sessions for secrets."""
-    patterns = get_builtin_patterns()
+    patterns = load_all_patterns()
     targets = discover_targets(CLAUDE_DIR)
     results = scan_targets(targets, patterns)
     print(format_scan_report(results, verbose=args.verbose))
@@ -863,7 +937,7 @@ def cmd_scan(args):
 
 def cmd_scrub(args):
     """Remove secrets from session data."""
-    patterns = get_builtin_patterns()
+    patterns = load_all_patterns()
     all_targets = discover_targets(CLAUDE_DIR)
     scan_results = scan_targets(all_targets, patterns)
     print(format_scan_report(scan_results, verbose=args.verbose))
