@@ -320,10 +320,11 @@ def scan_targets(targets, patterns, show_progress=False):
     for category in CATEGORY_ORDER:
         files = targets.get(category, [])
         label = CATEGORY_LABELS.get(category, category)
-        if show_progress and files:
-            print(f"  {label}...", end="", flush=True)
         file_matches = {}
-        for filepath in files:
+        total = len(files)
+        for i, filepath in enumerate(files, 1):
+            if show_progress:
+                print(f"\r{label + ':':<16}{i}/{total}...", end="", flush=True)
             try:
                 text = filepath.read_text(errors="replace")
             except OSError:
@@ -333,14 +334,11 @@ def scan_targets(targets, patterns, show_progress=False):
                 file_matches[filepath] = matches
         results[category] = file_matches
         if show_progress:
-            scanned = len(files)
             secret_count = sum(len(m) for m in file_matches.values())
-            file_noun = "file" if scanned == 1 else "files"
+            file_noun = "file" if total == 1 else "files"
             noun = "secret" if secret_count == 1 else "secrets"
-            if files:
-                print(f"\r{label + ':':<16}{scanned} {file_noun} scanned, {secret_count} {noun} found")
-            else:
-                print(f"{label + ':':<16}0 files scanned, 0 secrets found")
+            # Clear the line and print final result
+            print(f"\r{label + ':':<16}{total} {file_noun} scanned, {secret_count} {noun} found")
     return results
 
 
