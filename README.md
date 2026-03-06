@@ -1,82 +1,104 @@
-# claude-sessions
+# claude-scrub
 
-List and resume your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) conversations from the terminal.
+Scan and scrub secrets from [Claude Code](https://docs.anthropic.com/en/docs/claude-code) local session data.
 
-Claude Code stores session data locally but doesn't provide an easy way to browse past conversations or get resume commands. This script reads that data and generates a clean summary.
+Claude Code stores conversation history, clipboard pastes, and file snapshots locally. If you've ever pasted an API key or credential during a session, it's sitting in plaintext on disk. This tool finds and removes those secrets.
+
+Also includes a session browser for listing and resuming past conversations.
 
 ## What it does
 
-- Scans all `~/.claude/projects/` session data (indexes + raw `.jsonl` files)
-- Shows date, summary, git branch, message count, and a copy-pasteable `cd + claude --resume` command
-- Groups sessions by project directory
-- Scrubs 40+ secret patterns (API keys, tokens, credentials) from summaries before display
-- Filters noise (empty sessions, interrupted prompts, exit-only sessions)
+- **`scan`** — Read-only audit of all Claude Code data files for secrets
+- **`scrub`** — Remove secrets from session data (in-place, no backups)
+- **`sessions`** — List past sessions with resume commands and interactive picker
+- Scans 40+ secret patterns (API keys, tokens, credentials) across all data files
+- Optional integration with [secrets-patterns-db](https://github.com/mazen160/secrets-patterns-db) for 1600+ patterns
+- Custom patterns via TOML config
 - Zero dependencies beyond Python 3.6+ standard library
 
 ## Install
 
 ```bash
-# Download the script
-curl -o ~/.local/bin/claude-sessions \
-  https://raw.githubusercontent.com/penguinboi/claude-sessions-cli/main/claude-sessions
-chmod +x ~/.local/bin/claude-sessions
+curl -o ~/.local/bin/claude-scrub \
+  https://raw.githubusercontent.com/penguinboi/claude-scrub/main/claude-scrub
+chmod +x ~/.local/bin/claude-scrub
 ```
 
 Or clone and symlink:
 
 ```bash
-git clone https://github.com/penguinboi/claude-sessions-cli.git
-ln -s "$(pwd)/claude-sessions-cli/claude-sessions" ~/.local/bin/claude-sessions
+git clone https://github.com/penguinboi/claude-scrub.git
+ln -s "$(pwd)/claude-scrub/claude-scrub" ~/.local/bin/claude-scrub
 ```
 
-Make sure `~/.local/bin` is in your `PATH`, or put the script wherever you prefer.
+Make sure `~/.local/bin` is in your `PATH`.
 
 ## Usage
 
+### Scan for secrets
+
 ```bash
-# Show sessions from the last 30 days (default)
-claude-sessions
+# Quick summary of secrets across all Claude Code data
+claude-scrub scan
 
-# Show only the most recent session per project
-claude-sessions --latest
+# Detailed per-file, per-line report
+claude-scrub scan --verbose
 
-# Last 7 days
-claude-sessions --days 7
-
-# All sessions ever
-claude-sessions --all
-
-# Filter out short conversations
-claude-sessions --min-msgs 10
-
-# Save to a file
-claude-sessions --latest -o ~/sessions.md
-
-# Combine flags
-claude-sessions --latest --days 14 --min-msgs 5
+# Use 1600+ patterns from secrets-patterns-db
+claude-scrub scan --patterns-db
 ```
 
-### Example output
+### Scrub secrets
 
-```
-# Active Claude Sessions
+```bash
+# Interactive: shows scan results, asks for confirmation
+claude-scrub scrub
 
-Last 7 days | Generated 2026-03-05 19:11
+# Non-interactive
+claude-scrub scrub --yes
 
-## ~/Code/my-project
+# Also scrub paste cache and file history (opt-in)
+claude-scrub scrub --include paste-cache,file-history
 
-- **2026-03-05** — Fix authentication bug in login flow (`main`) [45 msgs]
-  `cd "~/Code/my-project" && claude --resume a1b2c3d4-e5f6-7890-abcd-ef1234567890`
-
-## ~/Code/other-project
-
-- **2026-03-04** — Add dark mode support (`feature/dark-mode`) [120 msgs]
-  `cd "~/Code/other-project" && claude --resume f9e8d7c6-b5a4-3210-fedc-ba0987654321`
+# Include ccrider database too
+claude-scrub scrub --include paste-cache,file-history,ccrider
 ```
 
-## Secret scrubbing
+### Browse sessions
 
-Summaries are automatically scrubbed for 40+ secret patterns before display, including:
+```bash
+# Interactive picker (arrow keys, Enter to resume)
+claude-scrub sessions
+
+# Markdown output
+claude-scrub sessions --print
+
+# Last 7 days, latest per project
+claude-scrub sessions --days 7 --latest
+
+# All sessions with 10+ messages
+claude-scrub sessions --all --min-msgs 10
+
+# Save to file
+claude-scrub sessions -o ~/sessions.md
+```
+
+## What gets scanned
+
+| Target | Path | Scan | Scrub |
+|--------|------|------|-------|
+| Session files | `~/.claude/projects/*/*.jsonl` | Always | Always |
+| Session indexes | `~/.claude/projects/*/sessions-index.json` | Always | Always |
+| Prompt history | `~/.claude/history.jsonl` | Always | Always |
+| Paste cache | `~/.claude/paste-cache/*` | Always | Opt-in |
+| File history | `~/.claude/file-history/*` | Always | Opt-in |
+| ccrider DB | `~/.config/ccrider/sessions.db` | Always | Opt-in |
+
+Scan always covers everything so you see the full picture. Scrub is opt-in for paste-cache, file-history, and ccrider because those are managed by other tools.
+
+## Built-in secret patterns
+
+40+ patterns covering:
 
 - **AI providers**: Anthropic, OpenAI
 - **Cloud**: AWS, GCP, Azure
@@ -89,21 +111,36 @@ Summaries are automatically scrubbed for 40+ secret patterns before display, inc
 
 Patterns sourced from [gitleaks](https://github.com/gitleaks/gitleaks) and [secret-regex-list](https://github.com/h33tlit/secret-regex-list).
 
-> **Note**: This tool only reads local session metadata (timestamps, summaries, session IDs). It does not read or output full conversation contents. However, session summaries and first prompts *may* contain sensitive information that the user typed. The secret scrubbing is a safety net, not a guarantee. Review output before sharing.
+## Custom patterns
 
-## How it works
+Add your own patterns in `~/.config/claude-scrub/config.toml`:
 
-Claude Code stores session data in `~/.claude/projects/<project-dir>/`:
+```toml
+[[patterns]]
+name = "Internal API Key"
+regex = "mycompany_[a-zA-Z0-9]{32}"
 
-1. **`sessions-index.json`** — Structured index with summaries, dates, and message counts (not all projects have this)
-2. **`<session-id>.jsonl`** — Raw session logs with messages, metadata, and timestamps
+[[patterns]]
+name = "Database URL"
+regex = "postgres://[^\\s]+"
+```
 
-The script reads both sources, deduplicates, and merges them into a unified view.
+Custom patterns are loaded alongside built-in patterns.
+
+## Extended patterns (--patterns-db)
+
+The `--patterns-db` flag downloads and caches [secrets-patterns-db](https://github.com/mazen160/secrets-patterns-db) (1600+ patterns in gitleaks format). More comprehensive but may produce more false positives.
+
+```bash
+claude-scrub scan --patterns-db
+```
+
+The database is cached at `~/.config/claude-scrub/patterns-db/gitleaks.toml`.
 
 ## Requirements
 
 - Python 3.6+
-- Claude Code installed (the `~/.claude/` directory must exist)
+- Claude Code installed (`~/.claude/` directory must exist)
 
 ## License
 
