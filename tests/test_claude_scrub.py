@@ -433,3 +433,75 @@ class TestPatternsDB(unittest.TestCase):
     def test_load_patterns_db_missing_file(self):
         patterns = cs.load_patterns_db(self.cache_dir / "nonexistent.toml")
         self.assertEqual(len(patterns), 0)
+
+
+class TestEndToEnd(unittest.TestCase):
+    """End-to-end test: scan finds secrets, scrub removes them, re-scan finds none."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.claude_dir = Path(self.tmpdir) / ".claude"
+        self.no_ccrider = Path(self.tmpdir) / "no-ccrider.db"
+        proj = self.claude_dir / "projects" / "-Users-test-Code-app"
+        proj.mkdir(parents=True)
+
+        (proj / "session1.jsonl").write_text(
+            '{"message":"AWS key: AKIAIOSFODNN7EXAMPLE"}\n'
+            '{"message":"Stripe: sk_live_abcdefghij1234567890"}\n'
+        )
+        (proj / "session2.jsonl").write_text(
+            '{"message":"no secrets here"}\n'
+        )
+
+        (self.claude_dir / "history.jsonl").write_text(
+            '{"prompt":"ghp_ABCDEFghijklmnopqrst1234567890ab"}\n'
+        )
+
+        paste = self.claude_dir / "paste-cache"
+        paste.mkdir()
+        (paste / "p1.txt").write_text("token: sk-ant-api03-AAAAABBBBCCCCDDDDEEEE1234567890abcdef")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmpdir)
+
+    def test_full_scan_scrub_rescan_cycle(self):
+        patterns = cs.get_builtin_patterns()
+
+        # 1. Scan — should find secrets
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results = cs.scan_targets(targets, patterns)
+        initial_count = sum(
+            len(m) for cat in results.values() for m in cat.values()
+        )
+        self.assertGreater(initial_count, 0)
+
+        # 2. Scrub sessions + history (default targets)
+        scrub_tgts = cs.filter_scrub_targets(targets, include="")
+        stats = cs.scrub_targets(scrub_tgts, patterns)
+        self.assertGreater(stats["total_secrets"], 0)
+
+        # 3. Re-scan sessions + history — should find no secrets
+        targets2 = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results2 = cs.scan_targets(targets2, patterns)
+        session_secrets = sum(len(m) for m in results2["sessions"].values())
+        history_secrets = sum(len(m) for m in results2["history"].values())
+        self.assertEqual(session_secrets, 0)
+        self.assertEqual(history_secrets, 0)
+
+        # 4. Paste cache should still have secrets (not included in default scrub)
+        paste_secrets = sum(len(m) for m in results2["paste_cache"].values())
+        self.assertGreater(paste_secrets, 0)
+
+        # 5. Scrub with paste-cache included
+        targets3 = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        scrub_tgts3 = cs.filter_scrub_targets(targets3, include="paste-cache")
+        cs.scrub_targets(scrub_tgts3, patterns)
+
+        # 6. Final re-scan — everything clean
+        targets4 = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results4 = cs.scan_targets(targets4, patterns)
+        final_count = sum(
+            len(m) for cat in results4.values() for m in cat.values()
+        )
+        self.assertEqual(final_count, 0)
