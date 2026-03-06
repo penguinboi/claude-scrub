@@ -39,97 +39,91 @@ USELESS_SUMMARIES = {
 
 # Patterns that match common secrets/credentials in text.
 # Sourced from gitleaks, trufflehog, and h33tlit/secret-regex-list.
-SECRET_PATTERNS = [
-    # --- AI providers ---
-    re.compile(r"sk-ant-api\d{2}-[A-Za-z0-9_-]{20,}"),
-    re.compile(r"sk-ant-admin\d{2}-[A-Za-z0-9_-]{20,}"),
-    re.compile(r"sk-proj-[A-Za-z0-9_-]{20,}"),
-    re.compile(r"sk-[A-Za-z0-9]{20,}"),
 
-    # --- Cloud providers ---
-    # AWS access key IDs (AKIA, ASIA, ABIA, ACCA prefixes)
-    re.compile(r"(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}"),
-    re.compile(r"(?:aws_secret_access_key|secret_access_key)\s*[:=]\s*\S+", re.IGNORECASE),
-    # Amazon MWS auth token
-    re.compile(r"amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"),
-    # Google API key
-    re.compile(r"AIza[0-9A-Za-z\-_]{35}"),
-    # Google OAuth access token
-    re.compile(r"ya29\.[0-9A-Za-z\-_]+"),
-    # Google OAuth client ID
-    re.compile(r"[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com"),
-    # Azure AD client secret
-    re.compile(r"[a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34}"),
 
-    # --- Payment ---
-    # Stripe live/test keys
-    re.compile(r"[sr]k_(?:test|live|prod)_[a-zA-Z0-9]{10,99}"),
-    # Square access token & OAuth secret
-    re.compile(r"sq0atp-[0-9A-Za-z\-_]{22}"),
-    re.compile(r"sq0csp-[0-9A-Za-z\-_]{43}"),
-    # PayPal Braintree access token
-    re.compile(r"access_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}"),
+def get_builtin_patterns():
+    """Return named secret patterns as [{"name": str, "regex": compiled_regex}, ...]."""
+    return [
+        # --- AI providers ---
+        {"name": "Anthropic API Key", "regex": re.compile(r"sk-ant-api\d{2}-[A-Za-z0-9_-]{20,}")},
+        {"name": "Anthropic Admin Key", "regex": re.compile(r"sk-ant-admin\d{2}-[A-Za-z0-9_-]{20,}")},
+        {"name": "OpenAI API Key", "regex": re.compile(r"sk-proj-[A-Za-z0-9_-]{20,}")},
+        {"name": "Generic SK Key", "regex": re.compile(r"sk-[A-Za-z0-9]{20,}")},
 
-    # --- Communication / email ---
-    # Slack tokens (bot, user, app, workspace)
-    re.compile(r"xox[pboa]-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*"),
-    # Slack webhook URL
-    re.compile(r"https://hooks\.slack\.com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}"),
-    # Discord bot/API token
-    re.compile(r"(?:discord|bot)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9._-]{50,}", re.IGNORECASE),
-    # Twilio API key
-    re.compile(r"SK[0-9a-fA-F]{32}"),
-    # SendGrid API token
-    re.compile(r"SG\.[a-zA-Z0-9=_\-.]{66}"),
-    # Mailchimp API key
-    re.compile(r"[0-9a-f]{32}-us[0-9]{1,2}"),
-    # Mailgun API key
-    re.compile(r"key-[0-9a-zA-Z]{32}"),
+        # --- Cloud providers ---
+        {"name": "AWS Access Key", "regex": re.compile(r"(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}")},
+        {"name": "AWS Secret Key Assignment", "regex": re.compile(r"(?:aws_secret_access_key|secret_access_key)\s*[:=]\s*\S+", re.IGNORECASE)},
+        {"name": "Amazon MWS Token", "regex": re.compile(r"amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")},
+        {"name": "Google API Key", "regex": re.compile(r"AIza[0-9A-Za-z\-_]{35}")},
+        {"name": "Google OAuth Token", "regex": re.compile(r"ya29\.[0-9A-Za-z\-_]+")},
+        {"name": "Google OAuth Client ID", "regex": re.compile(r"[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com")},
+        {"name": "Azure AD Client Secret", "regex": re.compile(r"[a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34}")},
 
-    # --- Dev platforms ---
-    # GitHub tokens (PAT, OAuth, app, refresh)
-    re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}"),
-    # GitLab tokens (PAT, pipeline, runner)
-    re.compile(r"gl(?:pat|ptt|rt)-[A-Za-z0-9_-]{20,}"),
-    # npm access token
-    re.compile(r"npm_[a-z0-9]{36}"),
-    # PyPI API token
-    re.compile(r"pypi-[A-Za-z0-9_-]{50,}"),
-    # Shopify access token
-    re.compile(r"shpat_[a-fA-F0-9]{32}"),
-    # Heroku API key (UUID format, context-dependent)
-    re.compile(r"(?:heroku)[\w.-]{0,20}[\s:=]+['\"]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE),
-    # Notion API token
-    re.compile(r"ntn_[0-9]{11}[A-Za-z0-9]{32,}"),
-    # Postman API token
-    re.compile(r"PMAK-[a-f0-9]{24}-[a-f0-9]{34}"),
-    # Datadog API/app key
-    re.compile(r"(?:datadog|dd)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{32,40}", re.IGNORECASE),
-    # Vercel token
-    re.compile(r"(?:vercel)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9]{24,}", re.IGNORECASE),
+        # --- Payment ---
+        {"name": "Stripe Key", "regex": re.compile(r"[sr]k_(?:test|live|prod)_[a-zA-Z0-9]{10,99}")},
+        {"name": "Square Access Token", "regex": re.compile(r"sq0atp-[0-9A-Za-z\-_]{22}")},
+        {"name": "Square OAuth Secret", "regex": re.compile(r"sq0csp-[0-9A-Za-z\-_]{43}")},
+        {"name": "PayPal Braintree Token", "regex": re.compile(r"access_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}")},
 
-    # --- Social / media ---
-    # Facebook access token
-    re.compile(r"EAACEdEose0cBA[0-9A-Za-z]+"),
-    # Twitch API token
-    re.compile(r"(?:twitch)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{30,}", re.IGNORECASE),
+        # --- Communication / email ---
+        {"name": "Slack Token", "regex": re.compile(r"xox[pboa]-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*")},
+        {"name": "Slack Webhook URL", "regex": re.compile(r"https://hooks\.slack\.com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}")},
+        {"name": "Discord Token", "regex": re.compile(r"(?:discord|bot)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9._-]{50,}", re.IGNORECASE)},
+        {"name": "Twilio API Key", "regex": re.compile(r"SK[0-9a-fA-F]{32}")},
+        {"name": "SendGrid API Token", "regex": re.compile(r"SG\.[a-zA-Z0-9=_\-.]{66}")},
+        {"name": "Mailchimp API Key", "regex": re.compile(r"[0-9a-f]{32}-us[0-9]{1,2}")},
+        {"name": "Mailgun API Key", "regex": re.compile(r"key-[0-9a-zA-Z]{32}")},
 
-    # --- Cryptographic material ---
-    # Private keys (RSA, DSA, EC, PGP, generic)
-    re.compile(r"-----BEGIN[A-Z ]* PRIVATE KEY[A-Z ]*-----"),
-    re.compile(r"-----BEGIN PGP PRIVATE KEY BLOCK-----"),
-    # JWT tokens
-    re.compile(r"\bey[a-zA-Z0-9]{17,}\.ey[a-zA-Z0-9/\\_-]{17,}\."),
+        # --- Dev platforms ---
+        {"name": "GitHub Token", "regex": re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}")},
+        {"name": "GitLab Token", "regex": re.compile(r"gl(?:pat|ptt|rt)-[A-Za-z0-9_-]{20,}")},
+        {"name": "npm Access Token", "regex": re.compile(r"npm_[a-z0-9]{36}")},
+        {"name": "PyPI API Token", "regex": re.compile(r"pypi-[A-Za-z0-9_-]{50,}")},
+        {"name": "Shopify Access Token", "regex": re.compile(r"shpat_[a-fA-F0-9]{32}")},
+        {"name": "Heroku API Key", "regex": re.compile(r"(?:heroku)[\w.-]{0,20}[\s:=]+['\"]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)},
+        {"name": "Notion API Token", "regex": re.compile(r"ntn_[0-9]{11}[A-Za-z0-9]{32,}")},
+        {"name": "Postman API Token", "regex": re.compile(r"PMAK-[a-f0-9]{24}-[a-f0-9]{34}")},
+        {"name": "Datadog Key", "regex": re.compile(r"(?:datadog|dd)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{32,40}", re.IGNORECASE)},
+        {"name": "Vercel Token", "regex": re.compile(r"(?:vercel)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9]{24,}", re.IGNORECASE)},
 
-    # --- Generic / catch-all ---
-    re.compile(r"Bearer\s+[A-Za-z0-9._-]{20,}", re.IGNORECASE),
-    re.compile(r"Authorization:\s*\S+", re.IGNORECASE),
-    re.compile(r"(?:key|token|secret|password|credential|passwd|api_key|apikey)\s*[:=]\s*\S{8,}", re.IGNORECASE),
-    # Passwords in URLs
-    re.compile(r"://[^@\s]+:[^@\s]+@"),
-    # Cloudinary URL (contains API secret)
-    re.compile(r"cloudinary://[^\s]+"),
-]
+        # --- Social / media ---
+        {"name": "Facebook Access Token", "regex": re.compile(r"EAACEdEose0cBA[0-9A-Za-z]+")},
+        {"name": "Twitch Token", "regex": re.compile(r"(?:twitch)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{30,}", re.IGNORECASE)},
+
+        # --- Cryptographic material ---
+        {"name": "Private Key", "regex": re.compile(r"-----BEGIN[A-Z ]* PRIVATE KEY[A-Z ]*-----")},
+        {"name": "PGP Private Key", "regex": re.compile(r"-----BEGIN PGP PRIVATE KEY BLOCK-----")},
+        {"name": "JWT Token", "regex": re.compile(r"\bey[a-zA-Z0-9]{17,}\.ey[a-zA-Z0-9/\\_-]{17,}\.")},
+
+        # --- Generic / catch-all ---
+        {"name": "Bearer Token", "regex": re.compile(r"Bearer\s+[A-Za-z0-9._-]{20,}", re.IGNORECASE)},
+        {"name": "Authorization Header", "regex": re.compile(r"Authorization:\s*\S+", re.IGNORECASE)},
+        {"name": "Generic Secret Assignment", "regex": re.compile(r"(?:key|token|secret|password|credential|passwd|api_key|apikey)\s*[:=]\s*\S{8,}", re.IGNORECASE)},
+        {"name": "Password in URL", "regex": re.compile(r"://[^@\s]+:[^@\s]+@")},
+        {"name": "Cloudinary URL", "regex": re.compile(r"cloudinary://[^\s]+")},
+    ]
+
+
+# Backward-compatible flat list for scrub_secrets()
+SECRET_PATTERNS = [p["regex"] for p in get_builtin_patterns()]
+
+
+def find_secrets(text, patterns):
+    """Find all secret matches in text, returning (pattern_name, match_text, line_num) tuples."""
+    matches = []
+    lines = text.split("\n")
+    for line_num, line in enumerate(lines, start=1):
+        for p in patterns:
+            for m in p["regex"].finditer(line):
+                matches.append((p["name"], m.group(), line_num))
+    return matches
+
+
+def redact_secrets(text, patterns):
+    """Replace each secret match with [REDACTED:<pattern_name>]."""
+    for p in patterns:
+        text = p["regex"].sub(f"[REDACTED:{p['name']}]", text)
+    return text
 
 
 # ---------------------------------------------------------------------------
