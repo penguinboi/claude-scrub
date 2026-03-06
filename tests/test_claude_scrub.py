@@ -251,6 +251,14 @@ class TestScanCommand(unittest.TestCase):
         self.assertIn("abc123.jsonl", output)
         self.assertIn("Line", output)
 
+    def test_format_scan_shows_total_files_scanned(self):
+        """Report should show total files scanned, not just files with secrets."""
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results = cs.scan_targets(targets, patterns)
+        output = cs.format_scan_report(results, verbose=False, targets=targets)
+        self.assertIn("scanned", output)
+
 
 class TestScrubCommand(unittest.TestCase):
 

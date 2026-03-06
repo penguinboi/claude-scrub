@@ -369,38 +369,45 @@ def scrub_targets(targets, patterns):
     return stats
 
 
-def format_scan_report(results, verbose=False):
+def format_scan_report(results, verbose=False, targets=None):
     """Format scan results as a human-readable report.
 
     Default mode shows per-category summary. Verbose mode adds per-file
-    detail with line numbers.
+    detail with line numbers. When targets is provided, shows total files
+    scanned per category (including clean files with no matches).
     """
-    lines = []
+    lines = ["Scanning Claude Code data...", ""]
+    total_files_scanned = 0
     total_secrets = 0
-    total_files = 0
 
-    for category, file_matches in results.items():
+    for category in ("sessions", "indexes", "history", "paste_cache", "file_history", "ccrider"):
+        if category not in results:
+            continue
+        file_results = results[category]
         label = CATEGORY_LABELS.get(category, category)
-        cat_secrets = sum(len(m) for m in file_matches.values())
-        cat_files = len(file_matches)
-        total_secrets += cat_secrets
-        total_files += cat_files
 
-        if cat_secrets > 0:
-            lines.append(f"  {label + ':':<16} {cat_files} file{'s' if cat_files != 1 else ''} with {cat_secrets} secret{'s' if cat_secrets != 1 else ''}")
+        scanned_count = len(targets[category]) if targets and category in targets else len(file_results)
+        secret_count = sum(len(m) for m in file_results.values())
+        total_files_scanned += scanned_count
+        total_secrets += secret_count
 
-            if verbose:
-                for filepath, matches in sorted(file_matches.items(), key=lambda x: str(x[0])):
-                    short = shorten_project(str(filepath))
-                    lines.append(f"    {short}")
-                    for name, _match_text, line_num in matches:
-                        lines.append(f"      Line {line_num}: {name}")
-                lines.append("")
+        file_noun = "file" if scanned_count == 1 else "files"
+        noun = "secret" if secret_count == 1 else "secrets"
+        lines.append(f"{label + ':':<16}{scanned_count} {file_noun} scanned, {secret_count} {noun} found")
 
-    if not verbose and lines:
-        lines.append("")
+        if verbose and file_results:
+            for filepath, matches in sorted(file_results.items(), key=lambda x: str(x[0])):
+                short = shorten_project(str(filepath))
+                lines.append(f"  {short}: {len(matches)} secrets")
+                for name, match_text, line_num in matches:
+                    preview = match_text[:20] + "..." if len(match_text) > 20 else match_text
+                    lines.append(f"    Line {line_num}: {name} ({preview})")
 
-    lines.append(f"Total: {total_secrets} secrets found across {total_files} file{'s' if total_files != 1 else ''}")
+    lines.append("")
+    noun = "secret" if total_secrets == 1 else "secrets"
+    file_noun = "file" if total_files_scanned == 1 else "files"
+    lines.append(f"Total: {total_secrets} {noun} found across {total_files_scanned} {file_noun}")
+
     return "\n".join(lines)
 
 
@@ -982,7 +989,7 @@ def cmd_scan(args):
     patterns = load_all_patterns(use_patterns_db=args.patterns_db)
     targets = discover_targets(CLAUDE_DIR)
     results = scan_targets(targets, patterns)
-    print(format_scan_report(results, verbose=args.verbose))
+    print(format_scan_report(results, verbose=args.verbose, targets=targets))
 
 
 def cmd_scrub(args):
@@ -990,7 +997,7 @@ def cmd_scrub(args):
     patterns = load_all_patterns(use_patterns_db=args.patterns_db)
     all_targets = discover_targets(CLAUDE_DIR)
     scan_results = scan_targets(all_targets, patterns)
-    print(format_scan_report(scan_results, verbose=args.verbose))
+    print(format_scan_report(scan_results, verbose=args.verbose, targets=all_targets))
 
     total = sum(sum(len(m) for m in cat.values()) for cat in scan_results.values())
     if total == 0:
