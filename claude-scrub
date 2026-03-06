@@ -1,0 +1,1031 @@
+#!/usr/bin/env python3
+# ABOUTME: Scan and scrub secrets from Claude Code local session data.
+# ABOUTME: Also lists sessions with resume commands. Zero dependencies.
+
+import argparse
+import curses
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+CLAUDE_DIR = Path.home() / ".claude"
+PROJECTS_DIR = CLAUDE_DIR / "projects"
+
+# How many days back to show (default: 30, override with --days N)
+DEFAULT_DAYS = 30
+# Minimum messages to count as a real session
+MIN_MESSAGES = 3
+
+# Patterns in first prompts that indicate noise rather than real conversation starts
+NOISE_PATTERNS = [
+    re.compile(r"^<local-command-caveat>"),
+    re.compile(r"^\[Request interrupted"),
+    re.compile(r"^<command-message>"),
+    re.compile(r"^No prompt$"),
+    re.compile(r"^exit$"),
+    re.compile(r"^/compact"),
+]
+
+# Summaries that aren't useful
+USELESS_SUMMARIES = {
+    "No summary",
+    "User Exits Session",
+    "User Exited CLI Session",
+}
+
+# Patterns that match common secrets/credentials in text.
+# Sourced from gitleaks, trufflehog, and h33tlit/secret-regex-list.
+
+
+def get_builtin_patterns():
+    """Return named secret patterns as [{"name": str, "regex": compiled_regex}, ...]."""
+    return [
+        # --- AI providers ---
+        {"name": "Anthropic API Key", "regex": re.compile(r"sk-ant-api\d{2}-[A-Za-z0-9_-]{20,}")},
+        {"name": "Anthropic Admin Key", "regex": re.compile(r"sk-ant-admin\d{2}-[A-Za-z0-9_-]{20,}")},
+        {"name": "OpenAI API Key", "regex": re.compile(r"sk-proj-[A-Za-z0-9_-]{20,}")},
+        {"name": "Generic SK Key", "regex": re.compile(r"sk-[A-Za-z0-9]{20,}")},
+
+        # --- Cloud providers ---
+        {"name": "AWS Access Key", "regex": re.compile(r"(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}")},
+        {"name": "AWS Secret Key Assignment", "regex": re.compile(r"(?:aws_secret_access_key|secret_access_key)\s*[:=]\s*\S+", re.IGNORECASE)},
+        {"name": "Amazon MWS Token", "regex": re.compile(r"amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")},
+        {"name": "Google API Key", "regex": re.compile(r"AIza[0-9A-Za-z\-_]{35}")},
+        {"name": "Google OAuth Token", "regex": re.compile(r"ya29\.[0-9A-Za-z\-_]+")},
+        {"name": "Google OAuth Client ID", "regex": re.compile(r"[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com")},
+        {"name": "Azure AD Client Secret", "regex": re.compile(r"[a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34}")},
+
+        # --- Payment ---
+        {"name": "Stripe Key", "regex": re.compile(r"[sr]k_(?:test|live|prod)_[a-zA-Z0-9]{10,99}")},
+        {"name": "Square Access Token", "regex": re.compile(r"sq0atp-[0-9A-Za-z\-_]{22}")},
+        {"name": "Square OAuth Secret", "regex": re.compile(r"sq0csp-[0-9A-Za-z\-_]{43}")},
+        {"name": "PayPal Braintree Token", "regex": re.compile(r"access_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}")},
+
+        # --- Communication / email ---
+        {"name": "Slack Token", "regex": re.compile(r"xox[pboa]-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*")},
+        {"name": "Slack Webhook URL", "regex": re.compile(r"https://hooks\.slack\.com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}")},
+        {"name": "Discord Token", "regex": re.compile(r"(?:discord|bot)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9._-]{50,}", re.IGNORECASE)},
+        {"name": "Twilio API Key", "regex": re.compile(r"SK[0-9a-fA-F]{32}")},
+        {"name": "SendGrid API Token", "regex": re.compile(r"SG\.[a-zA-Z0-9=_\-.]{66}")},
+        {"name": "Mailchimp API Key", "regex": re.compile(r"[0-9a-f]{32}-us[0-9]{1,2}")},
+        {"name": "Mailgun API Key", "regex": re.compile(r"key-[0-9a-zA-Z]{32}")},
+
+        # --- Dev platforms ---
+        {"name": "GitHub Token", "regex": re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}")},
+        {"name": "GitLab Token", "regex": re.compile(r"gl(?:pat|ptt|rt)-[A-Za-z0-9_-]{20,}")},
+        {"name": "npm Access Token", "regex": re.compile(r"npm_[a-z0-9]{36}")},
+        {"name": "PyPI API Token", "regex": re.compile(r"pypi-[A-Za-z0-9_-]{50,}")},
+        {"name": "Shopify Access Token", "regex": re.compile(r"shpat_[a-fA-F0-9]{32}")},
+        {"name": "Heroku API Key", "regex": re.compile(r"(?:heroku)[\w.-]{0,20}[\s:=]+['\"]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)},
+        {"name": "Notion API Token", "regex": re.compile(r"ntn_[0-9]{11}[A-Za-z0-9]{32,}")},
+        {"name": "Postman API Token", "regex": re.compile(r"PMAK-[a-f0-9]{24}-[a-f0-9]{34}")},
+        {"name": "Datadog Key", "regex": re.compile(r"(?:datadog|dd)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{32,40}", re.IGNORECASE)},
+        {"name": "Vercel Token", "regex": re.compile(r"(?:vercel)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9]{24,}", re.IGNORECASE)},
+
+        # --- Social / media ---
+        {"name": "Facebook Access Token", "regex": re.compile(r"EAACEdEose0cBA[0-9A-Za-z]+")},
+        {"name": "Twitch Token", "regex": re.compile(r"(?:twitch)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{30,}", re.IGNORECASE)},
+
+        # --- Cryptographic material ---
+        {"name": "Private Key", "regex": re.compile(r"-----BEGIN[A-Z ]* PRIVATE KEY[A-Z ]*-----")},
+        {"name": "PGP Private Key", "regex": re.compile(r"-----BEGIN PGP PRIVATE KEY BLOCK-----")},
+        {"name": "JWT Token", "regex": re.compile(r"\bey[a-zA-Z0-9]{17,}\.ey[a-zA-Z0-9/\\_-]{17,}\.")},
+
+        # --- Generic / catch-all ---
+        {"name": "Bearer Token", "regex": re.compile(r"Bearer\s+[A-Za-z0-9._-]{20,}", re.IGNORECASE)},
+        {"name": "Authorization Header", "regex": re.compile(r"Authorization:\s*\S+", re.IGNORECASE)},
+        {"name": "Generic Secret Assignment", "regex": re.compile(r"(?:key|token|secret|password|credential|passwd|api_key|apikey)\s*[:=]\s*\S{8,}", re.IGNORECASE)},
+        {"name": "Password in URL", "regex": re.compile(r"://[^@\s]+:[^@\s]+@")},
+        {"name": "Cloudinary URL", "regex": re.compile(r"cloudinary://[^\s]+")},
+    ]
+
+
+# Backward-compatible flat list for scrub_secrets()
+SECRET_PATTERNS = [p["regex"] for p in get_builtin_patterns()]
+
+
+def find_secrets(text, patterns):
+    """Find all secret matches in text, returning (pattern_name, match_text, line_num) tuples."""
+    matches = []
+    lines = text.split("\n")
+    for line_num, line in enumerate(lines, start=1):
+        for p in patterns:
+            for m in p["regex"].finditer(line):
+                matches.append((p["name"], m.group(), line_num))
+    return matches
+
+
+def redact_secrets(text, patterns):
+    """Replace each secret match with [REDACTED:<pattern_name>]."""
+    for p in patterns:
+        text = p["regex"].sub(f"[REDACTED:{p['name']}]", text)
+    return text
+
+
+CONFIG_DIR = Path.home() / ".config" / "claude-scrub"
+CONFIG_FILE = CONFIG_DIR / "config.toml"
+
+PATTERNS_DB_TOML_URL = "https://raw.githubusercontent.com/mazen160/secrets-patterns-db/master/db/gitleaks/gitleaks.toml"
+PATTERNS_DB_CACHE = CONFIG_DIR / "patterns-db" / "gitleaks.toml"
+
+
+def parse_simple_toml(text):
+    """Parse a minimal TOML subset supporting [[array]] tables and string values."""
+    try:
+        import tomllib
+        return tomllib.loads(text)
+    except ImportError:
+        pass
+
+    result = {}
+    current_array_key = None
+    current_item = None
+
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("[[") and line.endswith("]]"):
+            if current_item is not None and current_array_key is not None:
+                result.setdefault(current_array_key, []).append(current_item)
+            current_array_key = line[2:-2].strip()
+            current_item = {}
+            continue
+        if "=" in line and current_item is not None:
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip()
+            if (val.startswith('"') and val.endswith('"')) or \
+               (val.startswith("'") and val.endswith("'")):
+                val = val[1:-1]
+            val = val.replace("\\\\", "\x00").replace("\\n", "\n").replace("\\t", "\t").replace("\x00", "\\")
+            current_item[key] = val
+
+    if current_item is not None and current_array_key is not None:
+        result.setdefault(current_array_key, []).append(current_item)
+
+    return result
+
+
+def load_custom_patterns(config_path):
+    """Load user-defined secret patterns from a TOML config file."""
+    if not config_path.is_file():
+        return []
+    try:
+        text = config_path.read_text()
+    except OSError:
+        return []
+    data = parse_simple_toml(text)
+    patterns = []
+    for entry in data.get("patterns", []):
+        name = entry.get("name", "")
+        regex_str = entry.get("regex", "")
+        if not name or not regex_str:
+            continue
+        try:
+            compiled = re.compile(regex_str)
+            patterns.append({"name": name, "regex": compiled})
+        except re.error:
+            print(f"Warning: invalid regex for pattern '{name}', skipping", file=sys.stderr)
+    return patterns
+
+
+def load_patterns_db(toml_path):
+    """Load patterns from a gitleaks-format TOML file.
+
+    Gitleaks format uses [[rules]] with id, description, and regex fields.
+    """
+    if not toml_path.is_file():
+        return []
+    try:
+        text = toml_path.read_text()
+    except OSError:
+        return []
+    data = parse_simple_toml(text)
+    patterns = []
+    for rule in data.get("rules", []):
+        name = rule.get("description", rule.get("id", "unknown"))
+        regex_str = rule.get("regex", "")
+        if not regex_str:
+            continue
+        try:
+            compiled = re.compile(regex_str)
+            patterns.append({"name": name, "regex": compiled})
+        except re.error:
+            continue  # Skip invalid silently for bulk import
+    return patterns
+
+
+def download_patterns_db():
+    """Download secrets-patterns-db gitleaks TOML to local cache."""
+    import urllib.request
+    PATTERNS_DB_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Downloading patterns-db to {PATTERNS_DB_CACHE}...")
+    try:
+        urllib.request.urlretrieve(PATTERNS_DB_TOML_URL, PATTERNS_DB_CACHE)
+        print("Downloaded successfully.")
+    except Exception as e:
+        print(f"Error downloading patterns-db: {e}", file=sys.stderr)
+        return False
+    return True
+
+
+def load_all_patterns(use_patterns_db=False):
+    """Return built-in patterns merged with any user-defined custom patterns."""
+    patterns = get_builtin_patterns()
+    custom = load_custom_patterns(CONFIG_FILE)
+    if custom:
+        patterns.extend(custom)
+    if use_patterns_db:
+        if not PATTERNS_DB_CACHE.is_file():
+            download_patterns_db()
+        db_patterns = load_patterns_db(PATTERNS_DB_CACHE)
+        if db_patterns:
+            patterns.extend(db_patterns)
+            print(f"Loaded {len(db_patterns)} patterns from patterns-db", file=sys.stderr)
+    return patterns
+
+
+CATEGORY_LABELS = {
+    "sessions": "Sessions",
+    "indexes": "Index files",
+    "history": "History",
+    "paste_cache": "Paste cache",
+    "file_history": "File history",
+    "ccrider": "ccrider DB",
+}
+
+
+def discover_targets(claude_dir, ccrider_db=None):
+    """Discover all Claude Code data files, categorized by type."""
+    targets = {
+        "sessions": [],
+        "indexes": [],
+        "history": [],
+        "paste_cache": [],
+        "file_history": [],
+        "ccrider": [],
+    }
+
+    projects_dir = claude_dir / "projects"
+    if projects_dir.is_dir():
+        for project_dir in projects_dir.iterdir():
+            if not project_dir.is_dir():
+                continue
+            for f in project_dir.iterdir():
+                if f.suffix == ".jsonl" and f.is_file():
+                    targets["sessions"].append(f)
+                elif f.name == "sessions-index.json" and f.is_file():
+                    targets["indexes"].append(f)
+
+    history = claude_dir / "history.jsonl"
+    if history.is_file():
+        targets["history"].append(history)
+
+    paste_dir = claude_dir / "paste-cache"
+    if paste_dir.is_dir():
+        for f in paste_dir.iterdir():
+            if f.is_file():
+                targets["paste_cache"].append(f)
+
+    fh_dir = claude_dir / "file-history"
+    if fh_dir.is_dir():
+        for f in fh_dir.iterdir():
+            if f.is_file():
+                targets["file_history"].append(f)
+
+    if ccrider_db is None:
+        ccrider_db = Path.home() / ".config" / "ccrider" / "sessions.db"
+    if ccrider_db.is_file():
+        targets["ccrider"].append(ccrider_db)
+
+    return targets
+
+
+def scan_targets(targets, patterns):
+    """Scan all target files for secrets, returning per-category results.
+
+    Returns {category: {filepath: [(name, match_text, line_num), ...], ...}, ...}.
+    Files with no matches are omitted from the inner dict.
+    """
+    results = {}
+    for category, files in targets.items():
+        file_matches = {}
+        for filepath in files:
+            try:
+                text = filepath.read_text(errors="replace")
+            except OSError:
+                continue
+            matches = find_secrets(text, patterns)
+            if matches:
+                file_matches[filepath] = matches
+        results[category] = file_matches
+    return results
+
+
+def filter_scrub_targets(targets, include=""):
+    """Filter targets for scrub: sessions/indexes/history always included.
+
+    Optional categories (paste-cache, file-history, ccrider) are only
+    included when named in the comma-separated include string.
+    """
+    included = set(s.strip() for s in include.split(",") if s.strip())
+    return {
+        "sessions": targets.get("sessions", []),
+        "indexes": targets.get("indexes", []),
+        "history": targets.get("history", []),
+        "paste_cache": targets["paste_cache"] if "paste-cache" in included else [],
+        "file_history": targets["file_history"] if "file-history" in included else [],
+        "ccrider": targets["ccrider"] if "ccrider" in included else [],
+    }
+
+
+def scrub_targets(targets, patterns):
+    """Replace secrets in-place across all target files.
+
+    Returns stats dict with total_secrets, total_files, and per-category counts.
+    """
+    stats = {"total_secrets": 0, "total_files": 0, "categories": {}}
+    for category, files in targets.items():
+        cat_secrets = 0
+        cat_files = 0
+        for filepath in files:
+            try:
+                original = filepath.read_text(errors="replace")
+            except OSError:
+                continue
+            scrubbed = redact_secrets(original, patterns)
+            if scrubbed != original:
+                filepath.write_text(scrubbed)
+                cat_files += 1
+                cat_secrets += len(find_secrets(original, patterns))
+        stats["categories"][category] = {"secrets": cat_secrets, "files": cat_files}
+        stats["total_secrets"] += cat_secrets
+        stats["total_files"] += cat_files
+    return stats
+
+
+def format_scan_report(results, verbose=False, targets=None):
+    """Format scan results as a human-readable report.
+
+    Default mode shows per-category summary. Verbose mode adds per-file
+    detail with line numbers. When targets is provided, shows total files
+    scanned per category (including clean files with no matches).
+    """
+    lines = ["Scanning Claude Code data...", ""]
+    total_files_scanned = 0
+    total_secrets = 0
+
+    for category in ("sessions", "indexes", "history", "paste_cache", "file_history", "ccrider"):
+        if category not in results:
+            continue
+        file_results = results[category]
+        label = CATEGORY_LABELS.get(category, category)
+
+        scanned_count = len(targets[category]) if targets and category in targets else len(file_results)
+        secret_count = sum(len(m) for m in file_results.values())
+        total_files_scanned += scanned_count
+        total_secrets += secret_count
+
+        file_noun = "file" if scanned_count == 1 else "files"
+        noun = "secret" if secret_count == 1 else "secrets"
+        lines.append(f"{label + ':':<16}{scanned_count} {file_noun} scanned, {secret_count} {noun} found")
+
+        if verbose and file_results:
+            for filepath, matches in sorted(file_results.items(), key=lambda x: str(x[0])):
+                short = shorten_project(str(filepath))
+                lines.append(f"  {short}: {len(matches)} secrets")
+                for name, match_text, line_num in matches:
+                    preview = match_text[:20] + "..." if len(match_text) > 20 else match_text
+                    lines.append(f"    Line {line_num}: {name} ({preview})")
+
+    lines.append("")
+    noun = "secret" if total_secrets == 1 else "secrets"
+    file_noun = "file" if total_files_scanned == 1 else "files"
+    lines.append(f"Total: {total_secrets} {noun} found across {total_files_scanned} {file_noun}")
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Data loading (shared between interactive and print modes)
+# ---------------------------------------------------------------------------
+
+def project_path_from_dir_name(dir_name):
+    """Convert a project directory name back to a path."""
+    return dir_name.replace("-", "/")
+
+
+def load_indexed_sessions():
+    """Load sessions from all sessions-index.json files."""
+    sessions = {}
+
+    for index_file in PROJECTS_DIR.rglob("sessions-index.json"):
+        try:
+            data = json.loads(index_file.read_text())
+            for entry in data.get("entries", []):
+                sid = entry.get("sessionId")
+                if sid:
+                    sessions[sid] = {
+                        "sessionId": sid,
+                        "project": entry.get("projectPath", ""),
+                        "summary": entry.get("summary", ""),
+                        "firstPrompt": entry.get("firstPrompt", ""),
+                        "messageCount": entry.get("messageCount", 0),
+                        "created": entry.get("created", ""),
+                        "modified": entry.get("modified", ""),
+                        "gitBranch": entry.get("gitBranch", ""),
+                        "source": "index",
+                    }
+        except (json.JSONDecodeError, OSError):
+            continue
+
+    return sessions
+
+
+def extract_session_from_jsonl(jsonl_path):
+    """Extract metadata from a session .jsonl file."""
+    session_id = jsonl_path.stem
+    meta = {
+        "sessionId": session_id,
+        "project": "",
+        "summary": "",
+        "firstPrompt": "",
+        "messageCount": 0,
+        "created": "",
+        "modified": "",
+        "gitBranch": "",
+        "source": "jsonl",
+    }
+
+    user_msg_count = 0
+    first_user_msg = None
+    first_timestamp = None
+    last_timestamp = None
+
+    try:
+        with open(jsonl_path) as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                # Grab session metadata from any entry that has it
+                if not meta["project"] and d.get("cwd"):
+                    meta["project"] = d["cwd"]
+                if not meta["gitBranch"] and d.get("gitBranch"):
+                    meta["gitBranch"] = d["gitBranch"]
+
+                # Track timestamps
+                ts = d.get("timestamp")
+                if ts:
+                    if first_timestamp is None:
+                        first_timestamp = ts
+                    last_timestamp = ts
+
+                # Count user messages and grab first one
+                if d.get("type") == "user":
+                    user_msg_count += 1
+                    if first_user_msg is None:
+                        msg = d.get("message", {})
+                        content = msg.get("content", "")
+                        if isinstance(content, list):
+                            for c in content:
+                                if isinstance(c, dict) and c.get("type") == "text":
+                                    first_user_msg = c["text"][:200]
+                                    break
+                        elif isinstance(content, str):
+                            first_user_msg = content[:200]
+
+        meta["messageCount"] = user_msg_count
+        meta["firstPrompt"] = first_user_msg or ""
+        meta["created"] = first_timestamp or ""
+        meta["modified"] = last_timestamp or ""
+
+        # If no project from session data, infer from directory path
+        if not meta["project"]:
+            parent = jsonl_path.parent.name
+            meta["project"] = project_path_from_dir_name(parent)
+
+    except OSError:
+        pass
+
+    return meta
+
+
+def load_all_sessions():
+    """Load from indexes first, then fill gaps from .jsonl files."""
+    sessions = load_indexed_sessions()
+    indexed_ids = set(sessions.keys())
+
+    # Scan all .jsonl files for sessions not in any index
+    for project_dir in PROJECTS_DIR.iterdir():
+        if not project_dir.is_dir():
+            continue
+        for jsonl_file in project_dir.glob("*.jsonl"):
+            sid = jsonl_file.stem
+            if sid not in indexed_ids:
+                meta = extract_session_from_jsonl(jsonl_file)
+                if meta["messageCount"] >= MIN_MESSAGES:
+                    sessions[sid] = meta
+
+    return sessions
+
+
+def parse_timestamp(ts):
+    """Parse ISO timestamp or epoch millis to datetime."""
+    if not ts:
+        return None
+    if isinstance(ts, (int, float)):
+        return datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+    try:
+        # Handle ISO format with Z suffix
+        ts = ts.replace("Z", "+00:00")
+        return datetime.fromisoformat(ts)
+    except (ValueError, AttributeError):
+        return None
+
+
+def format_date(ts):
+    """Format a timestamp to YYYY-MM-DD."""
+    dt = parse_timestamp(ts)
+    if dt:
+        return dt.strftime("%Y-%m-%d")
+    return "unknown"
+
+
+def shorten_project(path):
+    """Shorten project path for display."""
+    home = str(Path.home())
+    if path.startswith(home):
+        return "~" + path[len(home):]
+    return path
+
+
+def expand_project(path):
+    """Expand ~ back to full home path."""
+    if path.startswith("~"):
+        return str(Path.home()) + path[1:]
+    return path
+
+
+def scrub_secrets(text):
+    """Replace anything that looks like a secret with [REDACTED]."""
+    for pattern in SECRET_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    return text
+
+
+def clean_prompt(text):
+    """Strip XML tags, plan prefixes, and other noise from a prompt."""
+    if not text:
+        return ""
+    # Strip XML-style tags
+    text = re.sub(r"<[^>]+>", "", text)
+    # Strip "Implement the following plan:" prefix
+    text = re.sub(r"^Implement the following plan:\s*", "", text)
+    # Strip markdown headers used as plan titles
+    text = re.sub(r"^#+\s*", "", text)
+    # Collapse whitespace
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def is_noise_prompt(text):
+    """Return True if the prompt matches a known noise pattern."""
+    return any(p.search(text) for p in NOISE_PATTERNS)
+
+
+def make_summary(session, max_len=80):
+    """Build a one-line summary from available data."""
+    summary = session.get("summary", "")
+    if summary and summary not in USELESS_SUMMARIES:
+        summary = scrub_secrets(summary)
+        if len(summary) > max_len:
+            summary = summary[:max_len - 3] + "..."
+        return summary
+
+    prompt = session.get("firstPrompt", "")
+    if prompt and not is_noise_prompt(prompt):
+        prompt = clean_prompt(prompt)
+        prompt = scrub_secrets(prompt)
+        if prompt:
+            if len(prompt) > max_len:
+                prompt = prompt[:max_len - 3] + "..."
+            return prompt
+
+    return "(no summary)"
+
+
+def filter_and_group(sessions, days, show_all, min_messages):
+    """Filter sessions by age/size, sort, and group by project."""
+    cutoff = None
+    if not show_all:
+        cutoff = datetime.now(timezone.utc).timestamp() - (days * 86400)
+
+    filtered = []
+    for s in sessions.values():
+        if s["messageCount"] < min_messages:
+            continue
+        mod_dt = parse_timestamp(s.get("modified") or s.get("created"))
+        if cutoff and mod_dt:
+            if mod_dt.timestamp() < cutoff:
+                continue
+        filtered.append(s)
+
+    # Sort by modified date, newest first
+    filtered.sort(
+        key=lambda x: parse_timestamp(x.get("modified") or x.get("created"))
+        or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+
+    # Group by project
+    by_project = {}
+    for s in filtered:
+        proj = s.get("project", "unknown")
+        by_project.setdefault(proj, []).append(s)
+
+    return by_project
+
+
+# ---------------------------------------------------------------------------
+# Parse arguments
+# ---------------------------------------------------------------------------
+
+def parse_args(argv=None):
+    """Parse command-line arguments using argparse with subcommands."""
+    parser = argparse.ArgumentParser(
+        prog="claude-scrub",
+        description="Scan and scrub secrets from Claude Code session data.",
+    )
+    subparsers = parser.add_subparsers(dest="command")
+    subparsers.required = True
+
+    # --- scan subcommand ---
+    scan_parser = subparsers.add_parser("scan", help="Scan sessions for secrets")
+    scan_parser.add_argument("-v", "--verbose", action="store_true",
+                             help="Show detailed output")
+    scan_parser.add_argument("--patterns-db", action="store_true",
+                             help="Use patterns-db for additional patterns")
+
+    # --- scrub subcommand ---
+    scrub_parser = subparsers.add_parser("scrub", help="Remove secrets from sessions")
+    scrub_parser.add_argument("-v", "--verbose", action="store_true",
+                              help="Show detailed output")
+    scrub_parser.add_argument("-y", "--yes", action="store_true",
+                              help="Skip confirmation prompts")
+    scrub_parser.add_argument("--patterns-db", action="store_true",
+                              help="Use patterns-db for additional patterns")
+    scrub_parser.add_argument("--include", type=str, default=None,
+                              help="Comma-separated data types to include")
+
+    # --- sessions subcommand ---
+    sessions_parser = subparsers.add_parser("sessions",
+                                            help="List and resume sessions")
+    sessions_parser.add_argument("--latest", action="store_true",
+                                 help="Show only the most recent session per project")
+    sessions_parser.add_argument("--days", type=int, default=DEFAULT_DAYS,
+                                 help=f"Show sessions from the last N days (default: {DEFAULT_DAYS})")
+    sessions_parser.add_argument("--all", action="store_true",
+                                 help="Show all sessions regardless of age")
+    sessions_parser.add_argument("--min-msgs", type=int, default=MIN_MESSAGES,
+                                 dest="min_msgs",
+                                 help=f"Minimum message count to include (default: {MIN_MESSAGES})")
+    sessions_parser.add_argument("--print", action="store_true", dest="print_mode",
+                                 help="Output markdown instead of interactive picker")
+    sessions_parser.add_argument("-o", type=str, default=None,
+                                 help="Write markdown to FILE (implies --print)")
+
+    return parser.parse_args(argv)
+
+
+# ---------------------------------------------------------------------------
+# Print mode (markdown output, original behavior)
+# ---------------------------------------------------------------------------
+
+def print_mode_output(by_project, days, show_all, latest_only, output_file):
+    """Generate markdown output to stdout or file."""
+    if latest_only:
+        for proj in by_project:
+            by_project[proj] = by_project[proj][:1]
+
+    lines = []
+    lines.append("# Active Claude Sessions")
+    lines.append("")
+    if not show_all:
+        lines.append(f"Last {days} days | Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    else:
+        lines.append(f"All sessions | Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    lines.append("")
+
+    for proj in sorted(by_project.keys()):
+        proj_sessions = by_project[proj]
+        lines.append(f"## {shorten_project(proj)}")
+        lines.append("")
+
+        for s in proj_sessions:
+            date = format_date(s.get("modified") or s.get("created"))
+            summary = make_summary(s)
+            sid = s["sessionId"]
+            branch = s.get("gitBranch", "")
+            msgs = s.get("messageCount", 0)
+
+            branch_str = f" (`{branch}`)" if branch else ""
+            proj_path = shorten_project(s.get("project", ""))
+            lines.append(f"- **{date}** — {summary}{branch_str} [{msgs} msgs]")
+            lines.append(f'  `cd "{proj_path}" && claude --resume {sid}`')
+            lines.append("")
+
+    output = "\n".join(lines)
+
+    if output_file:
+        Path(output_file).write_text(output)
+        print(f"Written to {output_file}", file=sys.stderr)
+    else:
+        print(output)
+
+
+# ---------------------------------------------------------------------------
+# Interactive mode (curses-based picker)
+# ---------------------------------------------------------------------------
+
+def truncate(text, width):
+    """Truncate text to fit in width, adding ellipsis if needed."""
+    if len(text) <= width:
+        return text
+    return text[:width - 1] + "\u2026"
+
+
+def draw_header(stdscr, title, width):
+    """Draw the header bar."""
+    stdscr.attron(curses.A_BOLD)
+    stdscr.addnstr(0, 0, " " * width, width, curses.color_pair(1))
+    stdscr.addnstr(0, 1, title, width - 2, curses.color_pair(1))
+    stdscr.attroff(curses.A_BOLD)
+
+
+def draw_footer(stdscr, text, row, width):
+    """Draw the footer help bar."""
+    stdscr.addnstr(row, 0, " " * width, width, curses.color_pair(2))
+    stdscr.addnstr(row, 1, text, width - 2, curses.color_pair(2))
+
+
+def pick_from_list(stdscr, title, items, format_fn, footer_text):
+    """Generic arrow-key picker. Returns selected index or -1 for back/quit."""
+    curses.curs_set(0)
+    selected = 0
+    scroll_offset = 0
+
+    while True:
+        stdscr.clear()
+        height, width = stdscr.getmaxyx()
+        usable_rows = height - 3  # header + footer + padding
+
+        if not items:
+            draw_header(stdscr, title, width)
+            stdscr.addnstr(2, 2, "(no sessions found)", width - 4)
+            draw_footer(stdscr, "q quit", height - 1, width)
+            stdscr.refresh()
+            key = stdscr.getch()
+            if key in (ord("q"), ord("Q"), 27):
+                return -1
+            continue
+
+        # Adjust scroll to keep selection visible
+        if selected < scroll_offset:
+            scroll_offset = selected
+        if selected >= scroll_offset + usable_rows:
+            scroll_offset = selected - usable_rows + 1
+
+        draw_header(stdscr, title, width)
+
+        for i in range(usable_rows):
+            idx = scroll_offset + i
+            if idx >= len(items):
+                break
+
+            row = i + 1  # +1 for header
+            is_selected = idx == selected
+            line = format_fn(items[idx], width - 4)
+
+            if is_selected:
+                attr = curses.color_pair(3) | curses.A_BOLD
+                prefix = "\u25b8 "
+            else:
+                attr = curses.color_pair(0)
+                prefix = "  "
+
+            display = prefix + line
+            try:
+                stdscr.addnstr(row, 0, truncate(display, width - 1), width - 1, attr)
+            except curses.error:
+                pass
+
+        # Scroll indicator
+        if len(items) > usable_rows:
+            pct = int((selected / max(len(items) - 1, 1)) * 100)
+            indicator = f" [{selected + 1}/{len(items)}] {pct}%"
+            try:
+                stdscr.addnstr(height - 2, width - len(indicator) - 1, indicator, len(indicator), curses.A_DIM)
+            except curses.error:
+                pass
+
+        draw_footer(stdscr, footer_text, height - 1, width)
+        stdscr.refresh()
+
+        key = stdscr.getch()
+        if key == curses.KEY_UP or key == ord("k"):
+            selected = max(0, selected - 1)
+        elif key == curses.KEY_DOWN or key == ord("j"):
+            selected = min(len(items) - 1, selected + 1)
+        elif key in (curses.KEY_ENTER, 10, 13):
+            return selected
+        elif key in (27, curses.KEY_LEFT, ord("h"), curses.KEY_BACKSPACE, 127):
+            return -1
+        elif key == ord("q") or key == ord("Q"):
+            return -2  # quit entirely
+        elif key == curses.KEY_HOME:
+            selected = 0
+        elif key == curses.KEY_END:
+            selected = len(items) - 1
+        elif key == curses.KEY_NPAGE:  # Page Down
+            selected = min(len(items) - 1, selected + usable_rows)
+        elif key == curses.KEY_PPAGE:  # Page Up
+            selected = max(0, selected - usable_rows)
+
+
+def interactive_mode(stdscr, by_project):
+    """Two-level picker: projects -> sessions -> resume."""
+    # Set up colors
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_CYAN)    # header
+    curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)   # footer
+    curses.init_pair(3, curses.COLOR_CYAN, -1)                    # selected item
+
+    # Sort projects by most recent session date
+    project_list = []
+    for proj, sessions in by_project.items():
+        most_recent = max(
+            (parse_timestamp(s.get("modified") or s.get("created")) for s in sessions),
+            default=datetime.min.replace(tzinfo=timezone.utc),
+        )
+        session_count = len(sessions)
+        total_msgs = sum(s.get("messageCount", 0) for s in sessions)
+        project_list.append({
+            "path": proj,
+            "sessions": sessions,
+            "most_recent": most_recent,
+            "session_count": session_count,
+            "total_msgs": total_msgs,
+        })
+
+    project_list.sort(key=lambda x: x["most_recent"], reverse=True)
+
+    def format_project(item, width):
+        short = shorten_project(item["path"])
+        date = item["most_recent"].strftime("%Y-%m-%d") if item["most_recent"] != datetime.min.replace(tzinfo=timezone.utc) else "unknown"
+        meta = f"{date}  {item['session_count']} sessions  {item['total_msgs']} msgs"
+        available = width - len(meta) - 3
+        name = truncate(short, max(available, 20))
+        padding = " " * max(1, width - len(name) - len(meta) - 2)
+        return f"{name}{padding}{meta}"
+
+    def format_session(session, width):
+        date = format_date(session.get("modified") or session.get("created"))
+        branch = session.get("gitBranch", "")
+        msgs = session.get("messageCount", 0)
+        meta = f"{date}  {msgs:>4} msgs"
+        if branch:
+            meta = f"{date}  {branch}  {msgs:>4} msgs"
+        summary = make_summary(session, max_len=width - len(meta) - 6)
+        available = width - len(meta) - 3
+        summary = truncate(summary, max(available, 20))
+        padding = " " * max(1, width - len(summary) - len(meta) - 2)
+        return f"{summary}{padding}{meta}"
+
+    # Main loop: project picker
+    while True:
+        result = pick_from_list(
+            stdscr,
+            "Claude Sessions - Pick a project",
+            project_list,
+            format_project,
+            "\u2191\u2193 navigate  \u23ce select  q quit",
+        )
+
+        if result < 0:
+            return None  # quit
+
+        proj = project_list[result]
+        sessions = proj["sessions"]
+
+        # Session picker for selected project
+        while True:
+            proj_title = f"{shorten_project(proj['path'])} ({len(sessions)} sessions)"
+            sess_result = pick_from_list(
+                stdscr,
+                proj_title,
+                sessions,
+                format_session,
+                "\u2191\u2193 navigate  \u23ce resume  \u2190/esc back  q quit",
+            )
+
+            if sess_result == -2:
+                return None  # quit
+            if sess_result == -1:
+                break  # back to project list
+
+            # Selected a session — return it
+            return sessions[sess_result]
+
+
+def launch_session(session):
+    """Change to the project directory and exec into claude --resume."""
+    project_dir = session.get("project", "")
+    session_id = session["sessionId"]
+
+    if project_dir and os.path.isdir(project_dir):
+        os.chdir(project_dir)
+
+    print(f"Resuming session in {shorten_project(project_dir)}...")
+    print(f"  claude --resume {session_id}")
+    print()
+
+    # Replace this process with claude
+    try:
+        os.execvp("claude", ["claude", "--resume", session_id])
+    except FileNotFoundError:
+        print("Error: 'claude' not found in PATH", file=sys.stderr)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def cmd_sessions(args):
+    """List and resume Claude Code sessions."""
+    if args.o:
+        args.print_mode = True
+    sessions = load_all_sessions()
+    by_project = filter_and_group(sessions, args.days, args.all, args.min_msgs)
+    if args.print_mode or not sys.stdout.isatty():
+        print_mode_output(by_project, args.days, args.all, args.latest, args.o)
+        return
+    selected = curses.wrapper(lambda stdscr: interactive_mode(stdscr, by_project))
+    if selected:
+        launch_session(selected)
+
+
+def cmd_scan(args):
+    """Scan sessions for secrets."""
+    patterns = load_all_patterns(use_patterns_db=args.patterns_db)
+    targets = discover_targets(CLAUDE_DIR)
+    results = scan_targets(targets, patterns)
+    print(format_scan_report(results, verbose=args.verbose, targets=targets))
+
+
+def cmd_scrub(args):
+    """Remove secrets from session data."""
+    patterns = load_all_patterns(use_patterns_db=args.patterns_db)
+    all_targets = discover_targets(CLAUDE_DIR)
+    scan_results = scan_targets(all_targets, patterns)
+    print(format_scan_report(scan_results, verbose=args.verbose, targets=all_targets))
+
+    total = sum(sum(len(m) for m in cat.values()) for cat in scan_results.values())
+    if total == 0:
+        print("\nNo secrets found. Nothing to scrub.")
+        return
+
+    include = args.include if args.include else ""
+    scrub_filtered = filter_scrub_targets(all_targets, include=include)
+
+    if not args.yes:
+        answer = input(f"\nScrub {total} secrets? This cannot be undone. [y/N] ")
+        if answer.lower() != "y":
+            print("Aborted.")
+            return
+
+    stats = scrub_targets(scrub_filtered, patterns)
+    print(f"\nScrubbed {stats['total_secrets']} secrets across {stats['total_files']} files.")
+
+
+def main():
+    args = parse_args()
+    if args.command == "sessions":
+        cmd_sessions(args)
+    elif args.command == "scan":
+        cmd_scan(args)
+    elif args.command == "scrub":
+        cmd_scrub(args)
+
+
+if __name__ == "__main__":
+    main()
