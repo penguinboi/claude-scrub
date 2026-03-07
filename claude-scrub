@@ -476,7 +476,7 @@ def scan_targets(targets, patterns, show_progress=False):
                 parts = [f"\r[{global_done + i}/{global_total}] {label + ':':<16}{i}/{cat_total}..."]
                 running = global_secrets + cat_secrets
                 if running > 0:
-                    parts.append(f", {running} {'secret' if running == 1 else 'secrets'}...")
+                    parts.append(f", {running} {'match' if running == 1 else 'matches'}...")
                 elapsed = time.monotonic() - start_time
                 files_done = global_done + i
                 if elapsed >= 1.0 and files_done / global_total >= 0.05:
@@ -498,7 +498,7 @@ def scan_targets(targets, patterns, show_progress=False):
         global_secrets += cat_secrets
         if show_progress:
             file_noun = "file" if cat_total == 1 else "files"
-            noun = "secret" if cat_secrets == 1 else "secrets"
+            noun = "match" if cat_secrets == 1 else "matches"
             print(f"\r[{global_done}/{global_total}] {label + ':':<16}{cat_total} {file_noun} scanned, {cat_secrets} {noun} found")
     return results
 
@@ -627,19 +627,19 @@ def format_scan_report(results, verbose=False, targets=None):
         total_secrets += secret_count
 
         file_noun = "file" if scanned_count == 1 else "files"
-        noun = "secret" if secret_count == 1 else "secrets"
+        noun = "match" if secret_count == 1 else "matches"
         lines.append(f"{label + ':':<16}{scanned_count} {file_noun} scanned, {secret_count} {noun} found")
 
         if verbose and file_results:
             for filepath, matches in sorted(file_results.items(), key=lambda x: str(x[0])):
                 short = shorten_project(str(filepath))
-                lines.append(f"  {short}: {len(matches)} secrets")
+                lines.append(f"  {short}: {len(matches)} matches")
                 for name, match_text, line_num, tier in matches:
                     preview = match_text[:20] + "..." if len(match_text) > 20 else match_text
                     lines.append(f"    Line {line_num}: {name} ({preview})")
 
     lines.append("")
-    noun = "secret" if total_secrets == 1 else "secrets"
+    noun = "match" if total_secrets == 1 else "matches"
     file_noun = "file" if total_files_scanned == 1 else "files"
     lines.append(f"Total: {total_secrets} {noun} found across {total_files_scanned} {file_noun}")
 
@@ -1228,23 +1228,39 @@ def cmd_sessions(args):
 
 
 def print_scan_totals(results, targets_summary, elapsed=None):
-    """Print the Total line from scan results."""
-    total_secrets = sum(sum(len(m) for m in cat.values()) for cat in results.values())
+    """Print the Total line with tier breakdown from scan results."""
+    total_matches = 0
+    specific_count = 0
+    generic_count = 0
+    for cat in results.values():
+        for matches in cat.values():
+            for match in matches:
+                total_matches += 1
+                tier = match[3] if len(match) > 3 else "specific"
+                if tier == "generic":
+                    generic_count += 1
+                else:
+                    specific_count += 1
     if isinstance(targets_summary, dict) and all(isinstance(v, int) for v in targets_summary.values()):
         total_files = sum(targets_summary.values())
     else:
         total_files = sum(len(targets_summary.get(c, [])) for c in CATEGORY_ORDER)
-    line = f"\nTotal: {total_secrets} {'secret' if total_secrets == 1 else 'secrets'} found across {total_files} {'file' if total_files == 1 else 'files'}"
+    match_noun = "match" if total_matches == 1 else "matches"
+    file_noun = "file" if total_files == 1 else "files"
+    line = f"\nTotal: {total_matches} {match_noun} across {total_files} {file_noun}"
     if elapsed is not None:
         line += f" ({elapsed:.1f}s)"
     print(line)
-    if total_secrets > 0:
+    if total_matches > 0:
+        print(f"\n  Secrets: {specific_count:>5} (specific pattern matches — scrubbed by default)")
+        if generic_count > 0:
+            print(f"  Generic: {generic_count:>5} (catch-all patterns — use --aggressive to scrub)")
         print("\n🔑 Exposed credentials should be rotated immediately —")
         print("   scrubbing removes local copies but doesn't revoke compromised secrets.")
 
 
 def print_verbose_detail(results):
-    """Print per-file, per-line secret detail."""
+    """Print per-file, per-line detail with tier tags on generic matches."""
     for category in CATEGORY_ORDER:
         file_results = results.get(category, {})
         if file_results:
@@ -1252,10 +1268,12 @@ def print_verbose_detail(results):
             print(f"\n{label}:")
             for filepath, matches in sorted(file_results.items(), key=lambda x: str(x[0])):
                 short = shorten_project(str(filepath))
-                print(f"  {short}: {len(matches)} secrets")
-                for name, match_text, line_num, tier in matches:
+                print(f"  {short}: {len(matches)} matches")
+                for name, match_text, line_num, *rest in matches:
+                    tier = rest[0] if rest else "specific"
                     preview = match_text[:20] + "..." if len(match_text) > 20 else match_text
-                    print(f"    Line {line_num}: {name} ({preview})")
+                    tier_tag = " [generic]" if tier == "generic" else ""
+                    print(f"    Line {line_num}: {name}{tier_tag} ({preview})")
 
 
 def cmd_scan(args):
@@ -1275,7 +1293,7 @@ def cmd_scan(args):
                 global_done += scanned
                 secret_count = sum(len(m) for m in file_results.values())
                 file_noun = "file" if scanned == 1 else "files"
-                noun = "secret" if secret_count == 1 else "secrets"
+                noun = "match" if secret_count == 1 else "matches"
                 print(f"[{global_done}/{global_total}] {label + ':':<16}{scanned} {file_noun} scanned, {secret_count} {noun} found")
             print_scan_totals(cached_results, cached_summary)
             print_verbose_detail(cached_results)
@@ -1310,13 +1328,21 @@ def cmd_scrub(args):
     include = args.include if args.include else ""
     scrub_filtered = filter_scrub_targets(all_targets, include=include)
 
-    # Count only secrets in categories that will actually be scrubbed
+    # Count only matches in categories that will actually be scrubbed,
+    # filtered by tier (specific only unless aggressive)
     scrub_categories = {cat for cat, files in scrub_filtered.items() if files}
-    total = sum(
-        sum(len(m) for m in scan_results[cat].values())
-        for cat in scrub_categories
-        if cat in scan_results
-    )
+    total = 0
+    generic_skipped = 0
+    for cat in scrub_categories:
+        if cat not in scan_results:
+            continue
+        for matches in scan_results[cat].values():
+            for match in matches:
+                tier = match[3] if len(match) > 3 else "specific"
+                if tier == "generic" and not args.aggressive:
+                    generic_skipped += 1
+                else:
+                    total += 1
     if total == 0:
         print("\nNo secrets found. Nothing to scrub.")
         return
@@ -1327,7 +1353,10 @@ def cmd_scrub(args):
         if cat_name not in scan_results:
             continue
         for matches in scan_results[cat_name].values():
-            for name, _match_text, _line_num, _tier in matches:
+            for name, _match_text, _line_num, *rest in matches:
+                tier = rest[0] if rest else "specific"
+                if tier == "generic" and not args.aggressive:
+                    continue
                 secret_counts[name] = secret_counts.get(name, 0) + 1
 
     if args.dry_run:
@@ -1366,6 +1395,9 @@ def cmd_scrub(args):
         for name, count in sorted(secret_counts.items(), key=lambda x: -x[1]):
             print(f"  {name}: {count}")
         print("\n🔑 Rotate these credentials NOW — scrubbing only removes local copies.")
+
+    if generic_skipped > 0 and not args.aggressive:
+        print(f"\n({generic_skipped} generic matches preserved — use --aggressive to include)")
 
     # Suggest rebuilding ccrider DB if it exists and wasn't directly scrubbed
     if "ccrider" not in scrub_categories and "ccrider" in scan_results:

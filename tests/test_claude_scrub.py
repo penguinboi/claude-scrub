@@ -259,7 +259,7 @@ class TestScanCommand(unittest.TestCase):
         targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
         results = cs.scan_targets(targets, patterns)
         output = cs.format_scan_report(results, verbose=False)
-        self.assertIn("secrets found", output.lower())
+        self.assertIn("matches found", output.lower())
         self.assertIn("Total:", output)
 
     def test_format_scan_verbose(self):
@@ -305,7 +305,7 @@ class TestScanCommand(unittest.TestCase):
             cs.scan_targets(targets, patterns, show_progress=True)
         output = buf.getvalue()
         # Sessions category has secrets, so tally should appear
-        self.assertRegex(output, r"\d+ secrets")
+        self.assertRegex(output, r"\d+ match")
 
     def test_progress_no_eta_when_fast(self):
         """ETA should not appear when scan completes in under 1 second."""
@@ -854,3 +854,125 @@ class TestTieredScrub(unittest.TestCase):
     def test_aggressive_default_false(self):
         args = cs.parse_args(["scrub"])
         self.assertFalse(args.aggressive)
+
+
+class TestScanTierOutput(unittest.TestCase):
+
+    def test_scan_totals_shows_tier_breakdown(self):
+        """print_scan_totals should split counts by tier."""
+        import io
+        from contextlib import redirect_stdout
+        fake_path = Path("/tmp/fake.jsonl")
+        results = {
+            "sessions": {fake_path: [
+                ("AWS Key", "AKIA...", 1, "specific"),
+                ("Generic Secret Assignment", "password=dev_mode_val", 2, "generic"),
+            ]},
+            "indexes": {}, "history": {}, "paste_cache": {},
+            "file_history": {}, "ccrider": {},
+        }
+        summary = {"sessions": 1, "indexes": 0, "history": 0,
+                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cs.print_scan_totals(results, summary)
+        output = buf.getvalue()
+        self.assertIn("Secrets:", output)
+        self.assertIn("Generic:", output)
+
+    def test_scan_totals_says_matches(self):
+        """Total line should say 'matches' not 'secrets'."""
+        import io
+        from contextlib import redirect_stdout
+        fake_path = Path("/tmp/fake.jsonl")
+        results = {
+            "sessions": {fake_path: [("AWS Key", "AKIA...", 1, "specific")]},
+            "indexes": {}, "history": {}, "paste_cache": {},
+            "file_history": {}, "ccrider": {},
+        }
+        summary = {"sessions": 1, "indexes": 0, "history": 0,
+                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cs.print_scan_totals(results, summary)
+        output = buf.getvalue()
+        # The total line should use "match" or "matches"
+        self.assertIn("match", output)
+
+    def test_scan_totals_hides_generic_when_zero(self):
+        """Generic line should not appear when there are no generic matches."""
+        import io
+        from contextlib import redirect_stdout
+        fake_path = Path("/tmp/fake.jsonl")
+        results = {
+            "sessions": {fake_path: [("AWS Key", "AKIA...", 1, "specific")]},
+            "indexes": {}, "history": {}, "paste_cache": {},
+            "file_history": {}, "ccrider": {},
+        }
+        summary = {"sessions": 1, "indexes": 0, "history": 0,
+                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cs.print_scan_totals(results, summary)
+        output = buf.getvalue()
+        self.assertNotIn("Generic:", output)
+
+    def test_progress_says_matches(self):
+        """Progress lines should say 'matches' not 'secrets'."""
+        import io
+        from contextlib import redirect_stdout
+        tmpdir = tempfile.mkdtemp()
+        claude_dir = Path(tmpdir) / ".claude"
+        proj = claude_dir / "projects" / "-test"
+        proj.mkdir(parents=True)
+        (proj / "s.jsonl").write_text('{"m":"AKIAIOSFODNN7EXAMPLE"}\n')
+        no_db = Path(tmpdir) / "no.db"
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(claude_dir, ccrider_db=no_db)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cs.scan_targets(targets, patterns, show_progress=True)
+        output = buf.getvalue()
+        # Final summary lines should use "match" or "matches"
+        lines = [l for l in output.split("\n") if "found" in l]
+        for line in lines:
+            self.assertIn("match", line.lower())
+        shutil.rmtree(tmpdir)
+
+    def test_verbose_detail_shows_tier_tag(self):
+        """Verbose output should tag generic matches with [generic]."""
+        import io
+        from contextlib import redirect_stdout
+        fake_path = Path("/tmp/fake.jsonl")
+        results = {
+            "sessions": {fake_path: [
+                ("AWS Key", "AKIA...", 1, "specific"),
+                ("Generic Secret Assignment", "password=dev_mode_val", 2, "generic"),
+            ]},
+            "indexes": {}, "history": {}, "paste_cache": {},
+            "file_history": {}, "ccrider": {},
+        }
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cs.print_verbose_detail(results)
+        output = buf.getvalue()
+        self.assertIn("[generic]", output.lower())
+
+    def test_verbose_detail_no_tag_for_specific(self):
+        """Verbose output should NOT tag specific matches with [specific]."""
+        import io
+        from contextlib import redirect_stdout
+        fake_path = Path("/tmp/fake.jsonl")
+        results = {
+            "sessions": {fake_path: [
+                ("AWS Key", "AKIA...", 1, "specific"),
+            ]},
+            "indexes": {}, "history": {}, "paste_cache": {},
+            "file_history": {}, "ccrider": {},
+        }
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cs.print_verbose_detail(results)
+        output = buf.getvalue()
+        self.assertNotIn("[specific]", output.lower())
+        self.assertNotIn("[generic]", output.lower())
