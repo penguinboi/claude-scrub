@@ -1185,6 +1185,9 @@ def cmd_scrub(args):
     scrub_filtered = filter_scrub_targets(all_targets, include=include)
 
     if not args.yes:
+        print(f"\n⚠️  WARNING: Do not scrub while Claude Code is running!")
+        print(f"   Scrubbing rewrites session files in-place. If Claude Code is")
+        print(f"   actively using a session, concurrent writes may corrupt it.")
         answer = input(f"\nScrub {total} secrets? This cannot be undone. [y/N] ")
         if answer.lower() != "y":
             print("Aborted.")
