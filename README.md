@@ -1,119 +1,140 @@
 # claude-scrub
 
-Scan and scrub secrets from [Claude Code](https://docs.anthropic.com/en/docs/claude-code) local session data.
+**Find and remove secrets from your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) local data.**
 
-Claude Code stores conversation history, clipboard pastes, and file snapshots locally. If you've ever pasted an API key or credential during a session, it's sitting in plaintext on disk. This tool finds and removes those secrets.
+Claude Code stores conversation history, clipboard pastes, and file snapshots in `~/.claude/`. If you've ever pasted an API key, token, or password during a session, it's sitting in plaintext on disk. `claude-scrub` finds those secrets and scrubs them.
 
-Also includes a session browser for listing and resuming past conversations.
+> Single Python file. Zero dependencies. Just download and run.
 
-## What it does
+---
 
-- **`scan`** — Read-only audit of all Claude Code data files for secrets
-- **`scrub`** — Remove secrets from session data (in-place, no backups)
-- **`sessions`** — List past sessions with resume commands and interactive picker
-- Scans 40+ secret patterns (API keys, tokens, credentials) across all data files
-- Optional integration with [secrets-patterns-db](https://github.com/mazen160/secrets-patterns-db) for 1600+ patterns
-- Custom patterns via TOML config
-- Zero dependencies beyond Python 3.6+ standard library
-
-## Install
+## Quick start
 
 ```bash
+# Install
 curl -o ~/.local/bin/claude-scrub \
   https://raw.githubusercontent.com/penguinboi/claude-scrub/main/claude-scrub
 chmod +x ~/.local/bin/claude-scrub
+
+# See what's exposed
+claude-scrub scan
+
+# Remove it
+claude-scrub scrub
 ```
 
-Or clone and symlink:
+Make sure `~/.local/bin` is in your `PATH`, or put it wherever you like.
+
+Alternatively, clone and symlink:
 
 ```bash
 git clone https://github.com/penguinboi/claude-scrub.git
 ln -s "$(pwd)/claude-scrub/claude-scrub" ~/.local/bin/claude-scrub
 ```
 
-Make sure `~/.local/bin` is in your `PATH`.
+## Commands
 
-## Usage
+### `scan` — Audit your data
 
-### Scan for secrets
+Read-only scan of all Claude Code data files. Nothing is modified.
 
 ```bash
-# Quick summary of secrets across all Claude Code data
 claude-scrub scan
-
-# Detailed per-file, per-line report
-claude-scrub scan --verbose
-
-# Use 1600+ patterns from secrets-patterns-db
-claude-scrub scan --patterns-db
 ```
 
-### Scrub secrets
+```
+Scanning Claude Code data...
+
+[422/587] Sessions:       422 files scanned, 31204 secrets found
+[433/587] Index files:     11 files scanned, 0 secrets found
+[434/587] History:          1 file scanned, 0 secrets found
+[586/587] Paste cache:    152 files scanned, 91 secrets found
+[587/587] ccrider DB:       1 file scanned, 1326 secrets found
+
+Total: 32621 secrets found across 587 files (45.2s)
+
+🔑 Exposed credentials should be rotated immediately —
+   scrubbing removes local copies but doesn't revoke compromised secrets.
+```
+
+Add `--verbose` for per-file, per-line detail with pattern names. Use `--patterns-db` to scan with 1600+ patterns from [secrets-patterns-db](https://github.com/mazen160/secrets-patterns-db).
+
+### `scrub` — Remove secrets
+
+Replaces secrets in-place with `[REDACTED:<pattern-name>]`. No backups are created (backups would contain the secrets).
 
 ```bash
-# Interactive: shows scan results, asks for confirmation
 claude-scrub scrub
-
-# Non-interactive
-claude-scrub scrub --yes
-
-# Also scrub paste cache and file history (opt-in)
-claude-scrub scrub --include paste-cache,file-history
-
-# Include ccrider database too
-claude-scrub scrub --include paste-cache,file-history,ccrider
 ```
 
-### Browse sessions
+```
+⚠️  Scrubbing rewrites session files in-place.
+   Do not scrub while Claude Code is running — it may corrupt active sessions.
+
+Scrub 31204 secrets? This cannot be undone. [y/N] y
+
+Scrubbed 31204 secrets across 177 files.
+
+Secrets scrubbed by type:
+  Generic Secret Assignment: 28012
+  Authorization Header: 1529
+  AWS Access Key: 596
+  ...
+
+🔑 Rotate these credentials NOW — scrubbing only removes local copies.
+```
+
+Use `--yes` to skip confirmation. Use `--include paste-cache,file-history,ccrider` to scrub optional targets (see below).
+
+### `sessions` — Browse and resume
+
+Interactive TUI for browsing past Claude Code sessions, grouped by project.
 
 ```bash
-# Interactive picker (arrow keys, Enter to resume)
 claude-scrub sessions
-
-# Markdown output
-claude-scrub sessions --print
-
-# Last 7 days, latest per project
-claude-scrub sessions --days 7 --latest
-
-# All sessions with 10+ messages
-claude-scrub sessions --all --min-msgs 10
-
-# Save to file
-claude-scrub sessions -o ~/sessions.md
 ```
 
-## What gets scanned
+Use arrow keys to navigate, Enter to resume a session. Also supports non-interactive output:
+
+```bash
+claude-scrub sessions --print              # Markdown to stdout
+claude-scrub sessions --days 7 --latest    # Last 7 days, latest per project
+claude-scrub sessions --all --min-msgs 10  # All sessions, 10+ messages
+claude-scrub sessions -o ~/sessions.md     # Save to file
+```
+
+## What gets scanned and scrubbed
 
 | Target | Path | Scan | Scrub |
-|--------|------|------|-------|
-| Session files | `~/.claude/projects/*/*.jsonl` | Always | Always |
-| Session indexes | `~/.claude/projects/*/sessions-index.json` | Always | Always |
-| Prompt history | `~/.claude/history.jsonl` | Always | Always |
-| Paste cache | `~/.claude/paste-cache/*` | Always | Opt-in |
-| File history | `~/.claude/file-history/*` | Always | Opt-in |
-| ccrider DB | `~/.config/ccrider/sessions.db` | Always | Opt-in |
+|--------|------|:----:|:-----:|
+| Session files | `~/.claude/projects/*/*.jsonl` | ✔ | ✔ |
+| Session indexes | `~/.claude/projects/*/sessions-index.json` | ✔ | ✔ |
+| Prompt history | `~/.claude/history.jsonl` | ✔ | ✔ |
+| Paste cache | `~/.claude/paste-cache/*` | ✔ | `--include paste-cache` |
+| File history | `~/.claude/file-history/*` | ✔ | `--include file-history` |
+| ccrider DB | `~/.config/ccrider/sessions.db` | ✔ | `--include ccrider` |
 
-Scan always covers everything so you see the full picture. Scrub is opt-in for paste-cache, file-history, and ccrider because those are managed by other tools.
+Scan always covers everything so you see the full picture. Scrub defaults to session files, indexes, and history. Paste cache, file history, and ccrider are opt-in because they're managed by other tools — scrubbing them directly could cause issues. After scrubbing sessions, you can rebuild the ccrider DB cleanly with `ccrider sync --force`.
 
-## Built-in secret patterns
+## Secret patterns
 
-40+ patterns covering:
+### Built-in (40+ patterns)
 
-- **AI providers**: Anthropic, OpenAI
-- **Cloud**: AWS, GCP, Azure
-- **Payment**: Stripe, Square, PayPal/Braintree
-- **Communication**: Slack, Discord, Twilio, SendGrid, Mailchimp, Mailgun
-- **Dev platforms**: GitHub, GitLab, npm, PyPI, Shopify, Heroku, Notion, Postman, Datadog, Vercel
-- **Social**: Facebook, Twitch
-- **Crypto**: Private keys (RSA/DSA/EC/PGP), JWT tokens
-- **Generic**: Bearer tokens, Authorization headers, key/token/secret/password assignments, credentials in URLs
+| Category | Examples |
+|----------|----------|
+| AI providers | Anthropic (`sk-ant-`), OpenAI (`sk-`) |
+| Cloud | AWS access keys (`AKIA`), GCP, Azure |
+| Payment | Stripe (`sk_live_`), Square, PayPal/Braintree |
+| Communication | Slack (`xoxb-`), Discord, Twilio, SendGrid, Mailchimp, Mailgun |
+| Dev platforms | GitHub (`ghp_`), GitLab (`glpat-`), npm, PyPI, Heroku, Datadog, Vercel |
+| Crypto material | Private keys (RSA/DSA/EC/PGP), JWT tokens |
+| Generic catch-alls | Bearer tokens, auth headers, `key=`/`secret=` assignments, credentials in URLs |
 
 Patterns sourced from [gitleaks](https://github.com/gitleaks/gitleaks) and [secret-regex-list](https://github.com/h33tlit/secret-regex-list).
 
-## Custom patterns
+### Custom patterns
 
-Add your own patterns in `~/.config/claude-scrub/config.toml`:
+Add your own in `~/.config/claude-scrub/config.toml`:
 
 ```toml
 [[patterns]]
@@ -122,26 +143,24 @@ regex = "mycompany_[a-zA-Z0-9]{32}"
 
 [[patterns]]
 name = "Database URL"
-regex = "postgres://[^\\s]+"
+regex = "postgres://[^\\s\",}]+"
 ```
 
-Custom patterns are loaded alongside built-in patterns.
+### Extended patterns (`--patterns-db`)
 
-## Extended patterns (--patterns-db)
-
-The `--patterns-db` flag downloads and caches [secrets-patterns-db](https://github.com/mazen160/secrets-patterns-db) (1600+ patterns in gitleaks format). More comprehensive but may produce more false positives.
+Downloads and caches [secrets-patterns-db](https://github.com/mazen160/secrets-patterns-db) (1600+ patterns in gitleaks format). More comprehensive but may produce more false positives.
 
 ```bash
 claude-scrub scan --patterns-db
 ```
 
-The database is cached at `~/.config/claude-scrub/patterns-db/gitleaks.toml`.
+Cached at `~/.config/claude-scrub/patterns-db/gitleaks.toml`.
 
 ## Requirements
 
-- Python 3.6+
-- Claude Code installed (`~/.claude/` directory must exist)
+- Python 3.6+ (standard library only, no `pip install`)
+- Claude Code installed (`~/.claude/` directory)
 
 ## License
 
-MIT
+[MIT](LICENSE)
