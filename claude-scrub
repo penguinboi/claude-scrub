@@ -1210,13 +1210,19 @@ def cmd_scrub(args):
         print("Scanning Claude Code data...\n")
         scan_results = scan_targets(all_targets, patterns, show_progress=True)
 
-    total = sum(sum(len(m) for m in cat.values()) for cat in scan_results.values())
+    include = args.include if args.include else ""
+    scrub_filtered = filter_scrub_targets(all_targets, include=include)
+
+    # Count only secrets in categories that will actually be scrubbed
+    scrub_categories = {cat for cat, files in scrub_filtered.items() if files}
+    total = sum(
+        sum(len(m) for m in scan_results[cat].values())
+        for cat in scrub_categories
+        if cat in scan_results
+    )
     if total == 0:
         print("\nNo secrets found. Nothing to scrub.")
         return
-
-    include = args.include if args.include else ""
-    scrub_filtered = filter_scrub_targets(all_targets, include=include)
 
     claude_running = is_claude_code_running()
     if claude_running:
@@ -1238,8 +1244,10 @@ def cmd_scrub(args):
 
     # Summarize scrubbed secret types from the scan results
     secret_counts = {}
-    for cat in scan_results.values():
-        for matches in cat.values():
+    for cat_name in scrub_categories:
+        if cat_name not in scan_results:
+            continue
+        for matches in scan_results[cat_name].values():
             for name, _match_text, _line_num in matches:
                 secret_counts[name] = secret_counts.get(name, 0) + 1
     if secret_counts:
@@ -1247,6 +1255,14 @@ def cmd_scrub(args):
         for name, count in sorted(secret_counts.items(), key=lambda x: -x[1]):
             print(f"  {name}: {count}")
         print("\n🔑 Rotate these credentials NOW — scrubbing only removes local copies.")
+
+    # Suggest rebuilding ccrider DB if it exists and wasn't directly scrubbed
+    if "ccrider" not in scrub_categories and "ccrider" in scan_results:
+        ccrider_secrets = sum(len(m) for m in scan_results["ccrider"].values())
+        if ccrider_secrets > 0:
+            print(f"\n📦 ccrider DB has {ccrider_secrets} secrets from cached sessions.")
+            print("   Rebuild it from the now-scrubbed session files:")
+            print("     ccrider sync --force")
 
     # Invalidate cache after scrubbing
     secure_delete(SCAN_CACHE_FILE)
