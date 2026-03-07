@@ -336,6 +336,35 @@ class TestPrintScanTotalsElapsed(unittest.TestCase):
         output = buf.getvalue()
         self.assertIn("(2.3s)", output)
 
+    def test_totals_shows_rotation_warning_when_secrets_found(self):
+        """print_scan_totals should warn about credential rotation when secrets exist."""
+        import io
+        from contextlib import redirect_stdout
+        fake_path = Path("/tmp/fake.jsonl")
+        results = {"sessions": {fake_path: [("AWS Key", "AKIA...", 1)]}, "indexes": {},
+                   "history": {}, "paste_cache": {}, "file_history": {}, "ccrider": {}}
+        summary = {"sessions": 1, "indexes": 0, "history": 0,
+                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cs.print_scan_totals(results, summary)
+        output = buf.getvalue()
+        self.assertIn("rotated", output)
+
+    def test_totals_no_rotation_warning_when_clean(self):
+        """print_scan_totals should not warn about rotation when no secrets found."""
+        import io
+        from contextlib import redirect_stdout
+        results = {"sessions": {}, "indexes": {}, "history": {},
+                   "paste_cache": {}, "file_history": {}, "ccrider": {}}
+        summary = {"sessions": 5, "indexes": 0, "history": 0,
+                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cs.print_scan_totals(results, summary)
+        output = buf.getvalue()
+        self.assertNotIn("rotated", output)
+
     def test_totals_without_elapsed_time(self):
         """print_scan_totals should not show timing when elapsed is None."""
         import io
