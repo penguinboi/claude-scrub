@@ -1229,6 +1229,20 @@ def cmd_scrub(args):
 
     stats = scrub_targets(scrub_filtered, patterns)
     print(f"\nScrubbed {stats['total_secrets']} secrets across {stats['total_files']} files.")
+
+    # Summarize scrubbed secret types from the scan results
+    secret_counts = {}
+    for cat in scan_results.values():
+        for matches in cat.values():
+            for name, _match_text, _line_num in matches:
+                secret_counts[name] = secret_counts.get(name, 0) + 1
+    if secret_counts:
+        print("\nSecrets scrubbed by type:")
+        for name, count in sorted(secret_counts.items(), key=lambda x: -x[1]):
+            print(f"  {name}: {count}")
+        print("\n🔑 These secrets were exposed in plaintext. Rotate them NOW —")
+        print("   scrubbing removes local copies but doesn't revoke compromised credentials.")
+
     # Invalidate cache after scrubbing
     secure_delete(SCAN_CACHE_FILE)
 
