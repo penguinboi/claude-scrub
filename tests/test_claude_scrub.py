@@ -103,8 +103,8 @@ class TestPatternEngine(unittest.TestCase):
 
     def test_find_secrets_deduplicates_generic_when_specific_matches(self):
         """Generic Secret Assignment should be suppressed when a specific pattern matches same text."""
-        # "token = glpat-ABCDEFGHIJ1234567890" matches both GitLab Token and Generic Secret Assignment
-        text = "token = glpat-ABCDEFGHIJ1234567890"
+        # "api_key = glpat-ABCDEFGHIJ1234567890" matches both GitLab Token and Generic Secret Assignment
+        text = "api_key = glpat-ABCDEFGHIJ1234567890"
         patterns = cs.get_builtin_patterns()
         matches = cs.find_secrets(text, patterns)
         names = [m[0] for m in matches]
@@ -114,7 +114,7 @@ class TestPatternEngine(unittest.TestCase):
 
     def test_find_secrets_keeps_generic_when_no_specific_matches(self):
         """Generic Secret Assignment should remain when no specific pattern matches."""
-        text = "secret = mysuperlong_internal_key_value_here"
+        text = "password = mysuperlong_internal_key_value_here"
         patterns = cs.get_builtin_patterns()
         matches = cs.find_secrets(text, patterns)
         names = [m[0] for m in matches]
@@ -631,6 +631,60 @@ class TestLuhnCheck(unittest.TestCase):
         matches = cs.find_secrets(text, patterns)
         names = [m[0] for m in matches]
         self.assertNotIn("Credit Card Number", names)
+
+
+class TestPatternTiers(unittest.TestCase):
+
+    def test_generic_patterns_set_only_contains_generic_secret(self):
+        """Only Generic Secret Assignment should be in the generic tier."""
+        self.assertEqual(cs.GENERIC_PATTERNS, {"Generic Secret Assignment"})
+
+    def test_narrowed_generic_does_not_match_bare_key(self):
+        """'key=something' should no longer match generic pattern."""
+        text = 'key=myConfigSetting123'
+        patterns = [p for p in cs.get_builtin_patterns() if p["name"] == "Generic Secret Assignment"]
+        matches = cs.find_secrets(text, patterns)
+        self.assertEqual(len(matches), 0)
+
+    def test_narrowed_generic_does_not_match_bare_token(self):
+        """'token=something' should no longer match generic pattern."""
+        text = 'token=development_value'
+        patterns = [p for p in cs.get_builtin_patterns() if p["name"] == "Generic Secret Assignment"]
+        matches = cs.find_secrets(text, patterns)
+        self.assertEqual(len(matches), 0)
+
+    def test_narrowed_generic_still_matches_password(self):
+        """'password=something' should still match."""
+        text = 'password=mysecretpassword123'
+        patterns = [p for p in cs.get_builtin_patterns() if p["name"] == "Generic Secret Assignment"]
+        matches = cs.find_secrets(text, patterns)
+        self.assertEqual(len(matches), 1)
+
+    def test_narrowed_generic_still_matches_api_key(self):
+        """'api_key=something' should still match."""
+        text = 'api_key=abc123def456ghi7'
+        patterns = [p for p in cs.get_builtin_patterns() if p["name"] == "Generic Secret Assignment"]
+        matches = cs.find_secrets(text, patterns)
+        self.assertEqual(len(matches), 1)
+
+    def test_narrowed_generic_matches_secret_key(self):
+        """'secret_key=something' should match."""
+        text = 'secret_key=abc123def456ghi7'
+        patterns = [p for p in cs.get_builtin_patterns() if p["name"] == "Generic Secret Assignment"]
+        matches = cs.find_secrets(text, patterns)
+        self.assertEqual(len(matches), 1)
+
+    def test_patterns_have_tier_field(self):
+        """All patterns should have a 'tier' field."""
+        for p in cs.get_builtin_patterns():
+            self.assertIn("tier", p, f"Pattern '{p['name']}' missing 'tier' field")
+            self.assertIn(p["tier"], ("specific", "generic"))
+
+    def test_only_generic_secret_assignment_is_generic_tier(self):
+        """Only one pattern should have tier='generic'."""
+        generic = [p for p in cs.get_builtin_patterns() if p["tier"] == "generic"]
+        self.assertEqual(len(generic), 1)
+        self.assertEqual(generic[0]["name"], "Generic Secret Assignment")
 
 
 class TestEndToEnd(unittest.TestCase):

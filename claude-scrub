@@ -50,65 +50,67 @@ def get_builtin_patterns():
     """Return named secret patterns as [{"name": str, "regex": compiled_regex}, ...]."""
     return [
         # --- AI providers ---
-        {"name": "Anthropic API Key", "regex": re.compile(r"sk-ant-api\d{2}-[A-Za-z0-9_-]{20,}")},
-        {"name": "Anthropic Admin Key", "regex": re.compile(r"sk-ant-admin\d{2}-[A-Za-z0-9_-]{20,}")},
-        {"name": "OpenAI API Key", "regex": re.compile(r"sk-proj-[A-Za-z0-9_-]{20,}")},
-        {"name": "Generic SK Key", "regex": re.compile(r"sk-[A-Za-z0-9]{20,}")},
+        {"name": "Anthropic API Key", "regex": re.compile(r"sk-ant-api\d{2}-[A-Za-z0-9_-]{20,}"), "tier": "specific"},
+        {"name": "Anthropic Admin Key", "regex": re.compile(r"sk-ant-admin\d{2}-[A-Za-z0-9_-]{20,}"), "tier": "specific"},
+        {"name": "OpenAI API Key", "regex": re.compile(r"sk-proj-[A-Za-z0-9_-]{20,}"), "tier": "specific"},
+        {"name": "Generic SK Key", "regex": re.compile(r"sk-[A-Za-z0-9]{20,}"), "tier": "specific"},
 
         # --- Cloud providers ---
-        {"name": "AWS Access Key", "regex": re.compile(r"(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}")},
-        {"name": "AWS Secret Key Assignment", "regex": re.compile(r"(?:aws_secret_access_key|secret_access_key)\s*[:=]\s*\S+", re.IGNORECASE)},
-        {"name": "Amazon MWS Token", "regex": re.compile(r"amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")},
-        {"name": "Google API Key", "regex": re.compile(r"AIza[0-9A-Za-z\-_]{35}")},
-        {"name": "Google OAuth Token", "regex": re.compile(r"ya29\.[0-9A-Za-z\-_]+")},
-        {"name": "Google OAuth Client ID", "regex": re.compile(r"[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com")},
-        {"name": "Azure AD Client Secret", "regex": re.compile(r"[a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34}")},
+        {"name": "AWS Access Key", "regex": re.compile(r"(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}"), "tier": "specific"},
+        {"name": "AWS Secret Key Assignment", "regex": re.compile(r"(?:aws_secret_access_key|secret_access_key)\s*[:=]\s*\S+", re.IGNORECASE), "tier": "specific"},
+        {"name": "Amazon MWS Token", "regex": re.compile(r"amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"), "tier": "specific"},
+        {"name": "Google API Key", "regex": re.compile(r"AIza[0-9A-Za-z\-_]{35}"), "tier": "specific"},
+        {"name": "Google OAuth Token", "regex": re.compile(r"ya29\.[0-9A-Za-z\-_]+"), "tier": "specific"},
+        {"name": "Google OAuth Client ID", "regex": re.compile(r"[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com"), "tier": "specific"},
+        {"name": "Azure AD Client Secret", "regex": re.compile(r"[a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34}"), "tier": "specific"},
 
         # --- Payment ---
-        {"name": "Stripe Key", "regex": re.compile(r"[sr]k_(?:test|live|prod)_[a-zA-Z0-9]{10,99}")},
-        {"name": "Square Access Token", "regex": re.compile(r"sq0atp-[0-9A-Za-z\-_]{22}")},
-        {"name": "Square OAuth Secret", "regex": re.compile(r"sq0csp-[0-9A-Za-z\-_]{43}")},
-        {"name": "PayPal Braintree Token", "regex": re.compile(r"access_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}")},
+        {"name": "Stripe Key", "regex": re.compile(r"[sr]k_(?:test|live|prod)_[a-zA-Z0-9]{10,99}"), "tier": "specific"},
+        {"name": "Square Access Token", "regex": re.compile(r"sq0atp-[0-9A-Za-z\-_]{22}"), "tier": "specific"},
+        {"name": "Square OAuth Secret", "regex": re.compile(r"sq0csp-[0-9A-Za-z\-_]{43}"), "tier": "specific"},
+        {"name": "PayPal Braintree Token", "regex": re.compile(r"access_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}"), "tier": "specific"},
 
         # --- Communication / email ---
-        {"name": "Slack Token", "regex": re.compile(r"xox[pboa]-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*")},
-        {"name": "Slack Webhook URL", "regex": re.compile(r"https://hooks\.slack\.com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}")},
-        {"name": "Discord Token", "regex": re.compile(r"(?:discord|bot)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9._-]{50,}", re.IGNORECASE)},
-        {"name": "Twilio API Key", "regex": re.compile(r"SK[0-9a-fA-F]{32}")},
-        {"name": "SendGrid API Token", "regex": re.compile(r"SG\.[a-zA-Z0-9=_\-.]{66}")},
-        {"name": "Mailchimp API Key", "regex": re.compile(r"[0-9a-f]{32}-us[0-9]{1,2}")},
-        {"name": "Mailgun API Key", "regex": re.compile(r"key-[0-9a-zA-Z]{32}")},
+        {"name": "Slack Token", "regex": re.compile(r"xox[pboa]-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*"), "tier": "specific"},
+        {"name": "Slack Webhook URL", "regex": re.compile(r"https://hooks\.slack\.com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}"), "tier": "specific"},
+        {"name": "Discord Token", "regex": re.compile(r"(?:discord|bot)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9._-]{50,}", re.IGNORECASE), "tier": "specific"},
+        {"name": "Twilio API Key", "regex": re.compile(r"SK[0-9a-fA-F]{32}"), "tier": "specific"},
+        {"name": "SendGrid API Token", "regex": re.compile(r"SG\.[a-zA-Z0-9=_\-.]{66}"), "tier": "specific"},
+        {"name": "Mailchimp API Key", "regex": re.compile(r"[0-9a-f]{32}-us[0-9]{1,2}"), "tier": "specific"},
+        {"name": "Mailgun API Key", "regex": re.compile(r"key-[0-9a-zA-Z]{32}"), "tier": "specific"},
 
         # --- Dev platforms ---
-        {"name": "GitHub Token", "regex": re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}")},
-        {"name": "GitLab Token", "regex": re.compile(r"gl(?:pat|ptt|rt)-[A-Za-z0-9_-]{20,}")},
-        {"name": "npm Access Token", "regex": re.compile(r"npm_[a-z0-9]{36}")},
-        {"name": "PyPI API Token", "regex": re.compile(r"pypi-[A-Za-z0-9_-]{50,}")},
-        {"name": "Shopify Access Token", "regex": re.compile(r"shpat_[a-fA-F0-9]{32}")},
-        {"name": "Heroku API Key", "regex": re.compile(r"(?:heroku)[\w.-]{0,20}[\s:=]+['\"]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)},
-        {"name": "Notion API Token", "regex": re.compile(r"ntn_[0-9]{11}[A-Za-z0-9]{32,}")},
-        {"name": "Postman API Token", "regex": re.compile(r"PMAK-[a-f0-9]{24}-[a-f0-9]{34}")},
-        {"name": "Datadog Key", "regex": re.compile(r"(?:datadog|dd)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{32,40}", re.IGNORECASE)},
-        {"name": "Vercel Token", "regex": re.compile(r"(?:vercel)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9]{24,}", re.IGNORECASE)},
+        {"name": "GitHub Token", "regex": re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}"), "tier": "specific"},
+        {"name": "GitLab Token", "regex": re.compile(r"gl(?:pat|ptt|rt)-[A-Za-z0-9_-]{20,}"), "tier": "specific"},
+        {"name": "npm Access Token", "regex": re.compile(r"npm_[a-z0-9]{36}"), "tier": "specific"},
+        {"name": "PyPI API Token", "regex": re.compile(r"pypi-[A-Za-z0-9_-]{50,}"), "tier": "specific"},
+        {"name": "Shopify Access Token", "regex": re.compile(r"shpat_[a-fA-F0-9]{32}"), "tier": "specific"},
+        {"name": "Heroku API Key", "regex": re.compile(r"(?:heroku)[\w.-]{0,20}[\s:=]+['\"]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE), "tier": "specific"},
+        {"name": "Notion API Token", "regex": re.compile(r"ntn_[0-9]{11}[A-Za-z0-9]{32,}"), "tier": "specific"},
+        {"name": "Postman API Token", "regex": re.compile(r"PMAK-[a-f0-9]{24}-[a-f0-9]{34}"), "tier": "specific"},
+        {"name": "Datadog Key", "regex": re.compile(r"(?:datadog|dd)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{32,40}", re.IGNORECASE), "tier": "specific"},
+        {"name": "Vercel Token", "regex": re.compile(r"(?:vercel)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9]{24,}", re.IGNORECASE), "tier": "specific"},
 
         # --- Social / media ---
-        {"name": "Facebook Access Token", "regex": re.compile(r"EAACEdEose0cBA[0-9A-Za-z]+")},
-        {"name": "Twitch Token", "regex": re.compile(r"(?:twitch)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{30,}", re.IGNORECASE)},
+        {"name": "Facebook Access Token", "regex": re.compile(r"EAACEdEose0cBA[0-9A-Za-z]+"), "tier": "specific"},
+        {"name": "Twitch Token", "regex": re.compile(r"(?:twitch)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{30,}", re.IGNORECASE), "tier": "specific"},
 
         # --- Cryptographic material ---
-        {"name": "Private Key", "regex": re.compile(r"-----BEGIN[A-Z ]* PRIVATE KEY[A-Z ]*-----")},
-        {"name": "PGP Private Key", "regex": re.compile(r"-----BEGIN PGP PRIVATE KEY BLOCK-----")},
-        {"name": "JWT Token", "regex": re.compile(r"\bey[a-zA-Z0-9]{17,}\.ey[a-zA-Z0-9/\\_-]{17,}\.")},
+        {"name": "Private Key", "regex": re.compile(r"-----BEGIN[A-Z ]* PRIVATE KEY[A-Z ]*-----"), "tier": "specific"},
+        {"name": "PGP Private Key", "regex": re.compile(r"-----BEGIN PGP PRIVATE KEY BLOCK-----"), "tier": "specific"},
+        {"name": "JWT Token", "regex": re.compile(r"\bey[a-zA-Z0-9]{17,}\.ey[a-zA-Z0-9/\\_-]{17,}\."), "tier": "specific"},
 
         # --- PII (validated) ---
-        {"name": "Credit Card Number", "regex": re.compile(r'\b[3-6]\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{1,4}\b'), "validate": "luhn"},
+        {"name": "Credit Card Number", "regex": re.compile(r'\b[3-6]\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{1,4}\b'), "validate": "luhn", "tier": "specific"},
+
+        # --- High-confidence catch-all ---
+        {"name": "Bearer Token", "regex": re.compile(r"Bearer\s+[A-Za-z0-9._-]{20,}", re.IGNORECASE), "tier": "specific"},
+        {"name": "Authorization Header", "regex": re.compile(r'Authorization:\s*[^\s",}\]]+', re.IGNORECASE), "tier": "specific"},
+        {"name": "Password in URL", "regex": re.compile(r'://[^@\s",}\]]+:[^@\s",}\]]+@'), "tier": "specific"},
+        {"name": "Cloudinary URL", "regex": re.compile(r'cloudinary://[^\s",}\]]+'), "tier": "specific"},
 
         # --- Generic / catch-all ---
-        {"name": "Bearer Token", "regex": re.compile(r"Bearer\s+[A-Za-z0-9._-]{20,}", re.IGNORECASE)},
-        {"name": "Authorization Header", "regex": re.compile(r'Authorization:\s*[^\s",}\]]+', re.IGNORECASE)},
-        {"name": "Generic Secret Assignment", "regex": re.compile(r'(?:key|token|secret|password|credential|passwd|api_key|apikey)\s*[:=]\s*[^\s",}\]]{8,}', re.IGNORECASE)},
-        {"name": "Password in URL", "regex": re.compile(r'://[^@\s",}\]]+:[^@\s",}\]]+@')},
-        {"name": "Cloudinary URL", "regex": re.compile(r'cloudinary://[^\s",}\]]+')},
+        {"name": "Generic Secret Assignment", "regex": re.compile(r'(?:password|credential|passwd|secret_key|api_key|apikey|secret_token)\s*[:=]\s*[^\s",}\]]{8,}', re.IGNORECASE), "tier": "generic"},
     ]
 
 
@@ -117,11 +119,7 @@ SECRET_PATTERNS = [p["regex"] for p in get_builtin_patterns()]
 
 
 GENERIC_PATTERNS = {
-    "Bearer Token",
-    "Authorization Header",
     "Generic Secret Assignment",
-    "Password in URL",
-    "Cloudinary URL",
 }
 
 
