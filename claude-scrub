@@ -2,6 +2,8 @@
 # ABOUTME: Scan and scrub secrets from Claude Code local session data.
 # ABOUTME: Also lists sessions with resume commands. Zero dependencies.
 
+VERSION = "0.1.0"
+
 import argparse
 import curses
 import json
@@ -821,6 +823,7 @@ def parse_args(argv=None):
         prog="claude-scrub",
         description="Scan and scrub secrets from Claude Code session data.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     subparsers = parser.add_subparsers(dest="command")
     subparsers.required = True
 
@@ -841,6 +844,8 @@ def parse_args(argv=None):
                               help="Use patterns-db for additional patterns")
     scrub_parser.add_argument("--include", type=str, default=None,
                               help="Comma-separated data types to include")
+    scrub_parser.add_argument("--dry-run", action="store_true",
+                              help="Show what would be scrubbed without modifying files")
 
     # --- sessions subcommand ---
     sessions_parser = subparsers.add_parser("sessions",
@@ -1238,6 +1243,24 @@ def cmd_scrub(args):
         print("\nNo secrets found. Nothing to scrub.")
         return
 
+    # Summarize what would be scrubbed (shared by dry-run and real scrub)
+    secret_counts = {}
+    for cat_name in scrub_categories:
+        if cat_name not in scan_results:
+            continue
+        for matches in scan_results[cat_name].values():
+            for name, _match_text, _line_num in matches:
+                secret_counts[name] = secret_counts.get(name, 0) + 1
+
+    if args.dry_run:
+        print(f"\nDry run: {total} secrets would be scrubbed.")
+        if secret_counts:
+            print("\nSecrets by type:")
+            for name, count in sorted(secret_counts.items(), key=lambda x: -x[1]):
+                print(f"  {name}: {count}")
+            print("\nRun without --dry-run to scrub.")
+        return
+
     claude_running = is_claude_code_running()
     if claude_running:
         print(f"\n🚨 Claude Code is currently running!")
@@ -1256,14 +1279,6 @@ def cmd_scrub(args):
     stats = scrub_targets(scrub_filtered, patterns)
     print(f"\nScrubbed {stats['total_secrets']} secrets across {stats['total_files']} files.")
 
-    # Summarize scrubbed secret types from the scan results
-    secret_counts = {}
-    for cat_name in scrub_categories:
-        if cat_name not in scan_results:
-            continue
-        for matches in scan_results[cat_name].values():
-            for name, _match_text, _line_num in matches:
-                secret_counts[name] = secret_counts.get(name, 0) + 1
     if secret_counts:
         print("\nSecrets scrubbed by type:")
         for name, count in sorted(secret_counts.items(), key=lambda x: -x[1]):

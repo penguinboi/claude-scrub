@@ -1,5 +1,7 @@
 # claude-scrub
 
+[![Tests](https://github.com/penguinboi/claude-scrub/actions/workflows/test.yml/badge.svg)](https://github.com/penguinboi/claude-scrub/actions/workflows/test.yml)
+
 **Find and remove secrets from your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) local data.**
 
 Claude Code stores conversation history, clipboard pastes, and file snapshots in `~/.claude/`. If you've ever pasted an API key, token, or password during a session, it's sitting in plaintext on disk. `claude-scrub` finds those secrets and scrubs them.
@@ -84,7 +86,7 @@ Secrets scrubbed by type:
 🔑 Rotate these credentials NOW — scrubbing only removes local copies.
 ```
 
-Use `--yes` to skip confirmation. Use `--include paste-cache,file-history,ccrider` to scrub optional targets (see below).
+Use `--dry-run` to preview what would be scrubbed without modifying anything. Use `--yes` to skip confirmation. Use `--include paste-cache,file-history,ccrider` to scrub optional targets (see below).
 
 ### `sessions` — Browse and resume
 
