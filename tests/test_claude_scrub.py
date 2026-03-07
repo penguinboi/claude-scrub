@@ -563,6 +563,35 @@ class TestPatternsDB(unittest.TestCase):
         self.assertEqual(len(patterns), 0)
 
 
+class TestEntropy(unittest.TestCase):
+
+    def test_single_char_string(self):
+        """All-same characters have zero entropy."""
+        self.assertAlmostEqual(cs.entropy("aaaaaa"), 0.0, places=2)
+
+    def test_two_equal_chars(self):
+        """Two equally frequent characters have entropy of 1.0 bit."""
+        self.assertAlmostEqual(cs.entropy("aabb"), 1.0, places=2)
+
+    def test_empty_string(self):
+        self.assertEqual(cs.entropy(""), 0.0)
+
+    def test_high_entropy_random_key(self):
+        """Random-looking API key should have high entropy."""
+        self.assertGreater(cs.entropy("sK3j8fAx7mNp2qRw"), 3.5)
+
+    def test_low_entropy_english_word(self):
+        """Common English word should have low entropy."""
+        self.assertLess(cs.entropy("development"), 3.5)
+
+    def test_config_value_low_entropy(self):
+        """Config-style values should have low entropy."""
+        self.assertLess(cs.entropy("development_mode"), 3.5)
+
+    def test_placeholder_low_entropy(self):
+        self.assertLess(cs.entropy("placeholder123"), 3.6)
+
+
 class TestEndToEnd(unittest.TestCase):
     """End-to-end test: scan finds secrets, scrub removes them, re-scan finds none."""
 

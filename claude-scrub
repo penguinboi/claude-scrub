@@ -12,7 +12,9 @@ import re
 import subprocess
 import sys
 import time
+from collections import Counter
 from datetime import datetime, timezone
+from math import log2
 from pathlib import Path
 
 CLAUDE_DIR = Path.home() / ".claude"
@@ -239,6 +241,21 @@ def make_json_safe_regex(regex_str):
     # [^\s] (explicit negated whitespace class) -> [^\s",}\]]
     safe = re.sub(r'\[\^\\s\]', r'[^\\s",}\\]]', safe)
     return safe
+
+
+# Entropy threshold for promoting generic matches to specific tier.
+# Values above this are likely random/generated (API keys, tokens).
+# Values below are likely human-readable (config values, placeholders).
+ENTROPY_THRESHOLD = 3.8
+
+
+def entropy(s):
+    """Compute Shannon entropy in bits per character."""
+    if not s:
+        return 0.0
+    freq = Counter(s)
+    length = len(s)
+    return -sum(count / length * log2(count / length) for count in freq.values())
 
 
 def load_custom_patterns(config_path):
