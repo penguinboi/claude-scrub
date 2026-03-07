@@ -162,6 +162,18 @@ SCAN_CACHE_FILE = CONFIG_DIR / "last-scan.json"
 SCAN_CACHE_MAX_AGE = 3600
 
 
+def is_claude_code_running():
+    """Check if a Claude Code process is currently running."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "claude"],
+            capture_output=True, timeout=5,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def secure_delete(path):
     """Overwrite file contents with zeros before unlinking."""
     try:
@@ -1150,15 +1162,18 @@ def cmd_scan(args):
         cached_results, cached_summary = load_scan_cache()
         if cached_results is not None:
             print("Using cached scan results (run 'scan' without --verbose to rescan)\n")
-            # Print category summary
+            # Print category summary with global counter
+            global_total = sum(cached_summary.get(c, 0) for c in CATEGORY_ORDER)
+            global_done = 0
             for category in CATEGORY_ORDER:
                 file_results = cached_results.get(category, {})
                 label = CATEGORY_LABELS.get(category, category)
                 scanned = cached_summary.get(category, 0)
+                global_done += scanned
                 secret_count = sum(len(m) for m in file_results.values())
                 file_noun = "file" if scanned == 1 else "files"
                 noun = "secret" if secret_count == 1 else "secrets"
-                print(f"{label + ':':<16}{scanned} {file_noun} scanned, {secret_count} {noun} found")
+                print(f"[{global_done}/{global_total}] {label + ':':<16}{scanned} {file_noun} scanned, {secret_count} {noun} found")
             print_scan_totals(cached_results, cached_summary)
             print_verbose_detail(cached_results)
             return
@@ -1197,10 +1212,16 @@ def cmd_scrub(args):
     include = args.include if args.include else ""
     scrub_filtered = filter_scrub_targets(all_targets, include=include)
 
+    claude_running = is_claude_code_running()
+    if claude_running:
+        print(f"\n🚨 Claude Code is currently running!")
+        print(f"   Scrubbing rewrites session files in-place and WILL corrupt")
+        print(f"   any active session. Close Claude Code first.")
+    else:
+        print(f"\n⚠️  Scrubbing rewrites session files in-place.")
+        print(f"   Do not scrub while Claude Code is running — it may corrupt active sessions.")
+
     if not args.yes:
-        print(f"\n⚠️  WARNING: Do not scrub while Claude Code is running!")
-        print(f"   Scrubbing rewrites session files in-place. If Claude Code is")
-        print(f"   actively using a session, concurrent writes may corrupt it.")
         answer = input(f"\nScrub {total} secrets? This cannot be undone. [y/N] ")
         if answer.lower() != "y":
             print("Aborted.")

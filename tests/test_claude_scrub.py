@@ -351,6 +351,14 @@ class TestPrintScanTotalsElapsed(unittest.TestCase):
         self.assertNotRegex(output, r"\(\d+\.?\d*s\)")
 
 
+class TestIsClaudeCodeRunning(unittest.TestCase):
+
+    def test_returns_bool(self):
+        """is_claude_code_running should return a boolean."""
+        result = cs.is_claude_code_running()
+        self.assertIsInstance(result, bool)
+
+
 class TestScrubCommand(unittest.TestCase):
 
     def setUp(self):
