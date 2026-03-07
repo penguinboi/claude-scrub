@@ -915,7 +915,10 @@ def draw_header(stdscr, title, width):
 
 def draw_footer(stdscr, text, row, width):
     """Draw the footer help bar."""
-    stdscr.addnstr(row, 0, " " * width, width, curses.color_pair(2))
+    try:
+        stdscr.addnstr(row, 0, " " * width, width, curses.color_pair(2))
+    except curses.error:
+        pass  # writing bottom-right corner causes expected curses error
     stdscr.addnstr(row, 1, text, width - 2, curses.color_pair(2))
 
 
