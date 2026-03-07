@@ -98,10 +98,10 @@ def get_builtin_patterns():
 
         # --- Generic / catch-all ---
         {"name": "Bearer Token", "regex": re.compile(r"Bearer\s+[A-Za-z0-9._-]{20,}", re.IGNORECASE)},
-        {"name": "Authorization Header", "regex": re.compile(r"Authorization:\s*\S+", re.IGNORECASE)},
-        {"name": "Generic Secret Assignment", "regex": re.compile(r"(?:key|token|secret|password|credential|passwd|api_key|apikey)\s*[:=]\s*\S{8,}", re.IGNORECASE)},
-        {"name": "Password in URL", "regex": re.compile(r"://[^@\s]+:[^@\s]+@")},
-        {"name": "Cloudinary URL", "regex": re.compile(r"cloudinary://[^\s]+")},
+        {"name": "Authorization Header", "regex": re.compile(r'Authorization:\s*[^\s",}\]]+', re.IGNORECASE)},
+        {"name": "Generic Secret Assignment", "regex": re.compile(r'(?:key|token|secret|password|credential|passwd|api_key|apikey)\s*[:=]\s*[^\s",}\]]{8,}', re.IGNORECASE)},
+        {"name": "Password in URL", "regex": re.compile(r'://[^@\s",}\]]+:[^@\s",}\]]+@')},
+        {"name": "Cloudinary URL", "regex": re.compile(r'cloudinary://[^\s",}\]]+')},
     ]
 
 
