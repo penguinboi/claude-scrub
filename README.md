@@ -8,6 +8,8 @@ Claude Code stores conversation history, clipboard pastes, and file snapshots in
 
 > Single Python file. Zero dependencies. Just download and run.
 
+> ⚠️ **Scrubbing is not enough.** It only removes local copies of secrets from your disk. If a credential was exposed, it should be **rotated immediately** — scrubbing doesn't revoke compromised keys.
+
 ---
 
 ## Quick start
