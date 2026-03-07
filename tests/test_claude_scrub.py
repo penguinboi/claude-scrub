@@ -278,6 +278,78 @@ class TestScanCommand(unittest.TestCase):
         output = cs.format_scan_report(results, verbose=False, targets=targets)
         self.assertIn("scanned", output)
 
+    def test_progress_shows_global_counter(self):
+        """Progress output should include [N/M] global file counter."""
+        import io
+        from contextlib import redirect_stdout
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        total_files = sum(len(v) for v in targets.values())
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cs.scan_targets(targets, patterns, show_progress=True)
+        output = buf.getvalue()
+        # Should contain the global counter prefix like [3/3]
+        self.assertRegex(output, r"\[\d+/\d+\]")
+        # Final global count should match total files
+        self.assertIn(f"[{total_files}/{total_files}]", output)
+
+    def test_progress_shows_secret_tally(self):
+        """Progress output should show running secret count when secrets exist."""
+        import io
+        from contextlib import redirect_stdout
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cs.scan_targets(targets, patterns, show_progress=True)
+        output = buf.getvalue()
+        # Sessions category has secrets, so tally should appear
+        self.assertRegex(output, r"\d+ secrets")
+
+    def test_progress_no_eta_when_fast(self):
+        """ETA should not appear when scan completes in under 1 second."""
+        import io
+        from contextlib import redirect_stdout
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cs.scan_targets(targets, patterns, show_progress=True)
+        output = buf.getvalue()
+        self.assertNotIn("ETA", output)
+
+
+class TestPrintScanTotalsElapsed(unittest.TestCase):
+
+    def test_totals_with_elapsed_time(self):
+        """print_scan_totals should include elapsed time when provided."""
+        import io
+        from contextlib import redirect_stdout
+        results = {"sessions": {}, "indexes": {}, "history": {},
+                   "paste_cache": {}, "file_history": {}, "ccrider": {}}
+        summary = {"sessions": 5, "indexes": 2, "history": 1,
+                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cs.print_scan_totals(results, summary, elapsed=2.345)
+        output = buf.getvalue()
+        self.assertIn("(2.3s)", output)
+
+    def test_totals_without_elapsed_time(self):
+        """print_scan_totals should not show timing when elapsed is None."""
+        import io
+        from contextlib import redirect_stdout
+        results = {"sessions": {}, "indexes": {}, "history": {},
+                   "paste_cache": {}, "file_history": {}, "ccrider": {}}
+        summary = {"sessions": 5, "indexes": 2, "history": 1,
+                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cs.print_scan_totals(results, summary)
+        output = buf.getvalue()
+        self.assertNotRegex(output, r"\(\d+\.?\d*s\)")
+
 
 class TestScrubCommand(unittest.TestCase):
 

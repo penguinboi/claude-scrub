@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -344,15 +345,31 @@ def scan_targets(targets, patterns, show_progress=False):
     Files with no matches are omitted from the inner dict.
     When show_progress is True, prints each category result to stdout in real time.
     """
+    global_total = sum(len(targets.get(c, [])) for c in CATEGORY_ORDER)
+    global_done = 0
+    global_secrets = 0
+    start_time = time.monotonic()
     results = {}
     for category in CATEGORY_ORDER:
         files = targets.get(category, [])
         label = CATEGORY_LABELS.get(category, category)
         file_matches = {}
-        total = len(files)
+        cat_total = len(files)
+        cat_secrets = 0
         for i, filepath in enumerate(files, 1):
             if show_progress:
-                print(f"\r{label + ':':<16}{i}/{total}...", end="", flush=True)
+                parts = [f"\r[{global_done + i}/{global_total}] {label + ':':<16}{i}/{cat_total}..."]
+                running = global_secrets + cat_secrets
+                if running > 0:
+                    parts.append(f", {running} {'secret' if running == 1 else 'secrets'}...")
+                elapsed = time.monotonic() - start_time
+                files_done = global_done + i
+                if elapsed >= 1.0 and files_done / global_total >= 0.05:
+                    remaining = (elapsed / files_done) * (global_total - files_done)
+                    parts.append(f"  (ETA ~{int(remaining + 0.5)}s)")
+                # Pad to clear previous longer lines
+                line = "".join(parts)
+                print(f"{line:<80}", end="", flush=True)
             try:
                 text = filepath.read_text(errors="replace")
             except OSError:
@@ -360,13 +377,14 @@ def scan_targets(targets, patterns, show_progress=False):
             matches = find_secrets(text, patterns)
             if matches:
                 file_matches[filepath] = matches
+                cat_secrets += len(matches)
         results[category] = file_matches
+        global_done += cat_total
+        global_secrets += cat_secrets
         if show_progress:
-            secret_count = sum(len(m) for m in file_matches.values())
-            file_noun = "file" if total == 1 else "files"
-            noun = "secret" if secret_count == 1 else "secrets"
-            # Clear the line and print final result
-            print(f"\r{label + ':':<16}{total} {file_noun} scanned, {secret_count} {noun} found")
+            file_noun = "file" if cat_total == 1 else "files"
+            noun = "secret" if cat_secrets == 1 else "secrets"
+            print(f"\r[{global_done}/{global_total}] {label + ':':<16}{cat_total} {file_noun} scanned, {cat_secrets} {noun} found")
     return results
 
 
@@ -1084,14 +1102,17 @@ def cmd_sessions(args):
         launch_session(selected)
 
 
-def print_scan_totals(results, targets_summary):
+def print_scan_totals(results, targets_summary, elapsed=None):
     """Print the Total line from scan results."""
     total_secrets = sum(sum(len(m) for m in cat.values()) for cat in results.values())
     if isinstance(targets_summary, dict) and all(isinstance(v, int) for v in targets_summary.values()):
         total_files = sum(targets_summary.values())
     else:
         total_files = sum(len(targets_summary.get(c, [])) for c in CATEGORY_ORDER)
-    print(f"\nTotal: {total_secrets} {'secret' if total_secrets == 1 else 'secrets'} found across {total_files} {'file' if total_files == 1 else 'files'}")
+    line = f"\nTotal: {total_secrets} {'secret' if total_secrets == 1 else 'secrets'} found across {total_files} {'file' if total_files == 1 else 'files'}"
+    if elapsed is not None:
+        line += f" ({elapsed:.1f}s)"
+    print(line)
 
 
 def print_verbose_detail(results):
@@ -1132,9 +1153,11 @@ def cmd_scan(args):
     patterns = load_all_patterns(use_patterns_db=args.patterns_db)
     targets = discover_targets(CLAUDE_DIR)
     print("Scanning Claude Code data...\n")
+    t0 = time.monotonic()
     results = scan_targets(targets, patterns, show_progress=True)
+    elapsed = time.monotonic() - t0
     save_scan_cache(results, targets)
-    print_scan_totals(results, targets)
+    print_scan_totals(results, targets, elapsed=elapsed)
     if args.verbose:
         print_verbose_detail(results)
 
