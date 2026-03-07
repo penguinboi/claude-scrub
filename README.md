@@ -96,6 +96,25 @@ By default, only specific-tier matches are scrubbed. Use `--aggressive` to also 
 
 Use `--dry-run` to preview what would be scrubbed without modifying anything. Use `--yes` to skip confirmation. Use `--include paste-cache,file-history,ccrider` to scrub optional targets (see below).
 
+### `stats` — Usage statistics
+
+See how much you've been using Claude Code.
+
+```bash
+claude-scrub stats
+```
+
+```
+📊 Claude Code Stats
+
+  Sessions:      435 across 19 projects
+  Messages:      98,828 (you: 40,532 / claude: 58,296)
+  First session: 2026-02-05 (30 days ago)
+  Data on disk:  2.1 GB
+  Most active:   ~/Code/project/scout (123 sessions, 4,793 msgs)
+  Biggest file:  curtail-website/181fdce1.jsonl (74 msgs, 107.8 MB)
+```
+
 ### `sessions` — Browse and resume
 
 Interactive TUI for browsing past Claude Code sessions, grouped by project.
