@@ -162,6 +162,19 @@ SCAN_CACHE_FILE = CONFIG_DIR / "last-scan.json"
 SCAN_CACHE_MAX_AGE = 3600
 
 
+def secure_delete(path):
+    """Overwrite file contents with zeros before unlinking."""
+    try:
+        size = path.stat().st_size
+        with open(path, "wb") as f:
+            f.write(b"\x00" * size)
+            f.flush()
+            os.fsync(f.fileno())
+        path.unlink()
+    except OSError:
+        pass
+
+
 def parse_simple_toml(text):
     """Parse a minimal TOML subset supporting [[array]] tables and string values."""
     try:
@@ -398,7 +411,7 @@ def save_scan_cache(results, targets):
         serialized = {}
         for filepath, matches in file_results.items():
             serialized[str(filepath)] = [
-                {"name": name, "match": match_text, "line": line_num}
+                {"name": name, "line": line_num}
                 for name, match_text, line_num in matches
             ]
         cache["categories"][category] = {
@@ -436,7 +449,7 @@ def load_scan_cache():
         for filepath_str, matches_data in cat_data.get("files", {}).items():
             filepath = Path(filepath_str)
             matches = [
-                (m["name"], m["match"], m["line"])
+                (m["name"], m.get("match", "(redacted)"), m["line"])
                 for m in matches_data
             ]
             file_results[filepath] = matches
@@ -1196,10 +1209,7 @@ def cmd_scrub(args):
     stats = scrub_targets(scrub_filtered, patterns)
     print(f"\nScrubbed {stats['total_secrets']} secrets across {stats['total_files']} files.")
     # Invalidate cache after scrubbing
-    try:
-        SCAN_CACHE_FILE.unlink(missing_ok=True)
-    except OSError:
-        pass
+    secure_delete(SCAN_CACHE_FILE)
 
 
 def main():
