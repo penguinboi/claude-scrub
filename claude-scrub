@@ -225,6 +225,20 @@ def parse_simple_toml(text):
     return result
 
 
+def make_json_safe_regex(regex_str):
+    """Rewrite greedy non-whitespace matchers so they stop at JSON delimiters.
+
+    Patterns using \\S or [^\\s] will eat through quotes, commas, and braces
+    in compact JSONL, corrupting file structure. Replace them with a character
+    class that excludes JSON structural characters.
+    """
+    # \S and \S+ and \S{n,} -> [^\s",}\]]  (same quantifier preserved)
+    safe = re.sub(r'\\S(?![a-zA-Z])', r'[^\\s",}\\]]', regex_str)
+    # [^\s] (explicit negated whitespace class) -> [^\s",}\]]
+    safe = re.sub(r'\[\^\\s\]', r'[^\\s",}\\]]', safe)
+    return safe
+
+
 def load_custom_patterns(config_path):
     """Load user-defined secret patterns from a TOML config file."""
     if not config_path.is_file():
@@ -241,7 +255,7 @@ def load_custom_patterns(config_path):
         if not name or not regex_str:
             continue
         try:
-            compiled = re.compile(regex_str)
+            compiled = re.compile(make_json_safe_regex(regex_str))
             patterns.append({"name": name, "regex": compiled})
         except re.error:
             print(f"Warning: invalid regex for pattern '{name}', skipping", file=sys.stderr)
@@ -267,7 +281,7 @@ def load_patterns_db(toml_path):
         if not regex_str:
             continue
         try:
-            compiled = re.compile(regex_str)
+            compiled = re.compile(make_json_safe_regex(regex_str))
             patterns.append({"name": name, "regex": compiled})
         except re.error:
             continue  # Skip invalid silently for bulk import
