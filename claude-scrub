@@ -124,38 +124,51 @@ GENERIC_PATTERNS = {
 
 
 def find_secrets(text, patterns):
-    """Find all secret matches in text, returning (pattern_name, match_text, line_num) tuples.
+    """Find all secret matches in text, returning (name, match_text, line_num, tier) tuples.
 
     Deduplicates overlapping matches: when a specific pattern and a generic
     catch-all pattern both match overlapping text on the same line, the generic
     match is dropped to avoid double-counting.
+
+    Generic matches whose value portion has high Shannon entropy are promoted
+    to tier "specific" (likely a real secret rather than a config placeholder).
     """
     matches = []
     lines = text.split("\n")
     for line_num, line in enumerate(lines, start=1):
-        # Collect all matches on this line as (name, start, end, match_text)
+        # Collect all matches on this line as (name, start, end, match_text, tier)
         line_matches = []
         for p in patterns:
             for m in p["regex"].finditer(line):
-                line_matches.append((p["name"], m.start(), m.end(), m.group()))
+                line_matches.append((p["name"], m.start(), m.end(), m.group(), p.get("tier", "specific")))
 
         # Apply post-match validation (e.g., Luhn for credit cards)
         validated = []
-        for name, start, end, match_text in line_matches:
+        for name, start, end, match_text, tier in line_matches:
             validator = next((p.get("validate") for p in patterns if p["name"] == name), None)
             if validator == "luhn" and not luhn_check(match_text):
                 continue
-            validated.append((name, start, end, match_text))
+            validated.append((name, start, end, match_text, tier))
         line_matches = validated
 
         # Remove generic matches that overlap with any specific match
-        specific = [(n, s, e) for n, s, e, _ in line_matches if n not in GENERIC_PATTERNS]
-        for name, start, end, match_text in line_matches:
+        specific = [(n, s, e) for n, s, e, _, _ in line_matches if n not in GENERIC_PATTERNS]
+        for name, start, end, match_text, tier in line_matches:
             if name in GENERIC_PATTERNS:
                 # Drop if any specific match overlaps this span
                 if any(s < end and e > start for _, s, e in specific):
                     continue
-            matches.append((name, match_text, line_num))
+            # Entropy-gated promotion: high-entropy generic values become specific
+            effective_tier = tier
+            if tier == "generic":
+                eq_pos = match_text.find("=")
+                if eq_pos < 0:
+                    eq_pos = match_text.find(":")
+                if eq_pos >= 0:
+                    value = match_text[eq_pos + 1:].strip()
+                    if entropy(value) >= ENTROPY_THRESHOLD:
+                        effective_tier = "specific"
+            matches.append((name, match_text, line_num, effective_tier))
     return matches
 
 
@@ -424,7 +437,7 @@ CATEGORY_ORDER = ("sessions", "indexes", "history", "paste_cache", "file_history
 def scan_targets(targets, patterns, show_progress=False):
     """Scan all target files for secrets, returning per-category results.
 
-    Returns {category: {filepath: [(name, match_text, line_num), ...], ...}, ...}.
+    Returns {category: {filepath: [(name, match_text, line_num, tier), ...], ...}, ...}.
     Files with no matches are omitted from the inner dict.
     When show_progress is True, prints each category result to stdout in real time.
     """
@@ -481,8 +494,8 @@ def save_scan_cache(results, targets):
         serialized = {}
         for filepath, matches in file_results.items():
             serialized[str(filepath)] = [
-                {"name": name, "line": line_num}
-                for name, match_text, line_num in matches
+                {"name": name, "line": line_num, "tier": tier}
+                for name, match_text, line_num, tier in matches
             ]
         cache["categories"][category] = {
             "scanned": scanned_count,
@@ -519,7 +532,7 @@ def load_scan_cache():
         for filepath_str, matches_data in cat_data.get("files", {}).items():
             filepath = Path(filepath_str)
             matches = [
-                (m["name"], m.get("match", "(redacted)"), m["line"])
+                (m["name"], m.get("match", "(redacted)"), m["line"], m.get("tier", "specific"))
                 for m in matches_data
             ]
             file_results[filepath] = matches
@@ -600,7 +613,7 @@ def format_scan_report(results, verbose=False, targets=None):
             for filepath, matches in sorted(file_results.items(), key=lambda x: str(x[0])):
                 short = shorten_project(str(filepath))
                 lines.append(f"  {short}: {len(matches)} secrets")
-                for name, match_text, line_num in matches:
+                for name, match_text, line_num, tier in matches:
                     preview = match_text[:20] + "..." if len(match_text) > 20 else match_text
                     lines.append(f"    Line {line_num}: {name} ({preview})")
 
@@ -1217,7 +1230,7 @@ def print_verbose_detail(results):
             for filepath, matches in sorted(file_results.items(), key=lambda x: str(x[0])):
                 short = shorten_project(str(filepath))
                 print(f"  {short}: {len(matches)} secrets")
-                for name, match_text, line_num in matches:
+                for name, match_text, line_num, tier in matches:
                     preview = match_text[:20] + "..." if len(match_text) > 20 else match_text
                     print(f"    Line {line_num}: {name} ({preview})")
 
@@ -1291,7 +1304,7 @@ def cmd_scrub(args):
         if cat_name not in scan_results:
             continue
         for matches in scan_results[cat_name].values():
-            for name, _match_text, _line_num in matches:
+            for name, _match_text, _line_num, _tier in matches:
                 secret_counts[name] = secret_counts.get(name, 0) + 1
 
     if args.dry_run:

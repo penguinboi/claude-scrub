@@ -83,7 +83,7 @@ class TestPatternEngine(unittest.TestCase):
         patterns = cs.get_builtin_patterns()
         matches = cs.find_secrets(text, patterns)
         self.assertGreater(len(matches), 0)
-        name, match_text, line_num = matches[0]
+        name, match_text, line_num, tier = matches[0]
         self.assertIsInstance(name, str)
         self.assertIn("sk-ant-api03", match_text)
         self.assertEqual(line_num, 1)
@@ -341,7 +341,7 @@ class TestPrintScanTotalsElapsed(unittest.TestCase):
         import io
         from contextlib import redirect_stdout
         fake_path = Path("/tmp/fake.jsonl")
-        results = {"sessions": {fake_path: [("AWS Key", "AKIA...", 1)]}, "indexes": {},
+        results = {"sessions": {fake_path: [("AWS Key", "AKIA...", 1, "specific")]}, "indexes": {},
                    "history": {}, "paste_cache": {}, "file_history": {}, "ccrider": {}}
         summary = {"sessions": 1, "indexes": 0, "history": 0,
                    "paste_cache": 0, "file_history": 0, "ccrider": 0}
@@ -685,6 +685,46 @@ class TestPatternTiers(unittest.TestCase):
         generic = [p for p in cs.get_builtin_patterns() if p["tier"] == "generic"]
         self.assertEqual(len(generic), 1)
         self.assertEqual(generic[0]["name"], "Generic Secret Assignment")
+
+
+class TestFindSecretsTier(unittest.TestCase):
+
+    def test_find_secrets_returns_4_tuples(self):
+        """find_secrets should return (name, match_text, line_num, tier)."""
+        text = "key is AKIAIOSFODNN7EXAMPLE"
+        patterns = cs.get_builtin_patterns()
+        matches = cs.find_secrets(text, patterns)
+        self.assertGreater(len(matches), 0)
+        self.assertEqual(len(matches[0]), 4)
+        name, match_text, line_num, tier = matches[0]
+        self.assertEqual(tier, "specific")
+
+    def test_generic_match_returns_generic_tier(self):
+        """Generic Secret Assignment matches should have tier='generic'."""
+        text = "password=someplaintextvalue1"
+        patterns = cs.get_builtin_patterns()
+        matches = cs.find_secrets(text, patterns)
+        generic_matches = [m for m in matches if m[0] == "Generic Secret Assignment"]
+        self.assertGreater(len(generic_matches), 0)
+        self.assertEqual(generic_matches[0][3], "generic")
+
+    def test_high_entropy_generic_promoted_to_specific(self):
+        """Generic match with high-entropy value should be promoted to 'specific'."""
+        text = "api_key=sK3j8fAx7mNp2qRwL9"
+        patterns = cs.get_builtin_patterns()
+        matches = cs.find_secrets(text, patterns)
+        generic_matches = [m for m in matches if m[0] == "Generic Secret Assignment"]
+        self.assertGreater(len(generic_matches), 0)
+        self.assertEqual(generic_matches[0][3], "specific")
+
+    def test_low_entropy_generic_stays_generic(self):
+        """Generic match with low-entropy value should stay 'generic'."""
+        text = "password=development_mode"
+        patterns = cs.get_builtin_patterns()
+        matches = cs.find_secrets(text, patterns)
+        generic_matches = [m for m in matches if m[0] == "Generic Secret Assignment"]
+        self.assertGreater(len(generic_matches), 0)
+        self.assertEqual(generic_matches[0][3], "generic")
 
 
 class TestEndToEnd(unittest.TestCase):
