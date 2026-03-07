@@ -47,19 +47,24 @@ claude-scrub scan
 ```
 Scanning Claude Code data...
 
-[422/587] Sessions:       422 files scanned, 31204 secrets found
-[433/587] Index files:     11 files scanned, 0 secrets found
-[434/587] History:          1 file scanned, 0 secrets found
-[586/587] Paste cache:    152 files scanned, 91 secrets found
-[587/587] ccrider DB:       1 file scanned, 1326 secrets found
+[422/587] Sessions:       422 files scanned, 31204 matches found
+[433/587] Index files:     11 files scanned, 0 matches found
+[434/587] History:          1 file scanned, 0 matches found
+[586/587] Paste cache:    152 files scanned, 91 matches found
+[587/587] ccrider DB:       1 file scanned, 1326 matches found
 
-Total: 32621 secrets found across 587 files (45.2s)
+Total: 32621 matches across 587 files (45.2s)
+
+  Secrets:   4609 (specific pattern matches — scrubbed by default)
+  Generic:  28012 (catch-all patterns — use --aggressive to scrub)
 
 🔑 Exposed credentials should be rotated immediately —
    scrubbing removes local copies but doesn't revoke compromised secrets.
 ```
 
-Add `--verbose` for per-file, per-line detail with pattern names. Use `--patterns-db` to scan with 1600+ patterns from [secrets-patterns-db](https://github.com/mazen160/secrets-patterns-db).
+Scan classifies matches into two tiers. **Specific** patterns have distinctive formats (prefixed API keys, private key headers, Luhn-validated credit cards) and are scrubbed by default. **Generic** patterns are broad catch-alls (`password=...`, `api_key=...`) that may match non-secret values — these are shown in scan output but only scrubbed with `--aggressive`. Generic matches with high [Shannon entropy](https://en.wikipedia.org/wiki/Entropy_(information_theory)) (random-looking values likely to be real secrets) are automatically promoted to the specific tier.
+
+Add `--verbose` for per-file, per-line detail with pattern names and tier tags. Use `--patterns-db` to scan with 1600+ patterns from [secrets-patterns-db](https://github.com/mazen160/secrets-patterns-db).
 
 ### `scrub` — Remove secrets
 
@@ -73,18 +78,21 @@ claude-scrub scrub
 ⚠️  Scrubbing rewrites session files in-place.
    Do not scrub while Claude Code is running — it may corrupt active sessions.
 
-Scrub 31204 secrets? This cannot be undone. [y/N] y
+Scrub 4609 secrets? This cannot be undone. [y/N] y
 
-Scrubbed 31204 secrets across 177 files.
+Scrubbed 4609 secrets across 177 files.
 
 Secrets scrubbed by type:
-  Generic Secret Assignment: 28012
   Authorization Header: 1529
   AWS Access Key: 596
   ...
 
+(28012 generic matches preserved — use --aggressive to include)
+
 🔑 Rotate these credentials NOW — scrubbing only removes local copies.
 ```
+
+By default, only specific-tier matches are scrubbed. Use `--aggressive` to also scrub generic pattern matches (may degrade session context by redacting non-secret values like config keys).
 
 Use `--dry-run` to preview what would be scrubbed without modifying anything. Use `--yes` to skip confirmation. Use `--include paste-cache,file-history,ccrider` to scrub optional targets (see below).
 
@@ -122,15 +130,17 @@ Scan always covers everything so you see the full picture. Scrub defaults to ses
 
 ### Built-in (40+ patterns)
 
-| Category | Examples |
-|----------|----------|
-| AI providers | Anthropic (`sk-ant-`), OpenAI (`sk-`) |
-| Cloud | AWS access keys (`AKIA`), GCP, Azure |
-| Payment | Stripe (`sk_live_`), Square, PayPal/Braintree |
-| Communication | Slack (`xoxb-`), Discord, Twilio, SendGrid, Mailchimp, Mailgun |
-| Dev platforms | GitHub (`ghp_`), GitLab (`glpat-`), npm, PyPI, Heroku, Datadog, Vercel |
-| Crypto material | Private keys (RSA/DSA/EC/PGP), JWT tokens |
-| Generic catch-alls | Bearer tokens, auth headers, `key=`/`secret=` assignments, credentials in URLs |
+| Category | Tier | Examples |
+|----------|------|----------|
+| AI providers | Specific | Anthropic (`sk-ant-`), OpenAI (`sk-`) |
+| Cloud | Specific | AWS access keys (`AKIA`), GCP, Azure |
+| Payment | Specific | Stripe (`sk_live_`), Square, PayPal/Braintree |
+| Communication | Specific | Slack (`xoxb-`), Discord, Twilio, SendGrid, Mailchimp, Mailgun |
+| Dev platforms | Specific | GitHub (`ghp_`), GitLab (`glpat-`), npm, PyPI, Heroku, Datadog, Vercel |
+| Crypto material | Specific | Private keys (RSA/DSA/EC/PGP), JWT tokens |
+| Credit cards | Specific | Luhn-validated card numbers (Visa, Mastercard, Amex, etc.) |
+| Auth headers | Specific | Bearer tokens, `Authorization:` headers, credentials in URLs |
+| Generic catch-all | Generic | `password=`/`api_key=`/`credential=` assignments |
 
 Patterns sourced from [gitleaks](https://github.com/gitleaks/gitleaks) and [secret-regex-list](https://github.com/h33tlit/secret-regex-list).
 
