@@ -592,6 +592,47 @@ class TestEntropy(unittest.TestCase):
         self.assertLess(cs.entropy("placeholder123"), 3.6)
 
 
+class TestLuhnCheck(unittest.TestCase):
+
+    def test_valid_visa(self):
+        self.assertTrue(cs.luhn_check("4111111111111111"))
+
+    def test_valid_mastercard(self):
+        self.assertTrue(cs.luhn_check("5500000000000004"))
+
+    def test_valid_amex(self):
+        self.assertTrue(cs.luhn_check("340000000000009"))
+
+    def test_invalid_number(self):
+        self.assertFalse(cs.luhn_check("1234567890123456"))
+
+    def test_with_spaces(self):
+        """Should work after stripping non-digits."""
+        self.assertTrue(cs.luhn_check("4111 1111 1111 1111"))
+
+    def test_with_dashes(self):
+        self.assertTrue(cs.luhn_check("4111-1111-1111-1111"))
+
+    def test_short_number(self):
+        self.assertFalse(cs.luhn_check("411111"))
+
+    def test_credit_card_pattern_finds_valid_cards(self):
+        """The credit card pattern should detect Luhn-valid card numbers in text."""
+        text = 'card on file: 4111 1111 1111 1111 thanks'
+        patterns = cs.get_builtin_patterns()
+        matches = cs.find_secrets(text, patterns)
+        names = [m[0] for m in matches]
+        self.assertIn("Credit Card Number", names)
+
+    def test_credit_card_pattern_skips_invalid_luhn(self):
+        """Card-shaped numbers that fail Luhn should not match."""
+        text = 'order number: 4111 1111 1111 1112'
+        patterns = cs.get_builtin_patterns()
+        matches = cs.find_secrets(text, patterns)
+        names = [m[0] for m in matches]
+        self.assertNotIn("Credit Card Number", names)
+
+
 class TestEndToEnd(unittest.TestCase):
     """End-to-end test: scan finds secrets, scrub removes them, re-scan finds none."""
 

@@ -100,6 +100,9 @@ def get_builtin_patterns():
         {"name": "PGP Private Key", "regex": re.compile(r"-----BEGIN PGP PRIVATE KEY BLOCK-----")},
         {"name": "JWT Token", "regex": re.compile(r"\bey[a-zA-Z0-9]{17,}\.ey[a-zA-Z0-9/\\_-]{17,}\.")},
 
+        # --- PII (validated) ---
+        {"name": "Credit Card Number", "regex": re.compile(r'\b[3-6]\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{1,4}\b'), "validate": "luhn"},
+
         # --- Generic / catch-all ---
         {"name": "Bearer Token", "regex": re.compile(r"Bearer\s+[A-Za-z0-9._-]{20,}", re.IGNORECASE)},
         {"name": "Authorization Header", "regex": re.compile(r'Authorization:\s*[^\s",}\]]+', re.IGNORECASE)},
@@ -137,6 +140,15 @@ def find_secrets(text, patterns):
         for p in patterns:
             for m in p["regex"].finditer(line):
                 line_matches.append((p["name"], m.start(), m.end(), m.group()))
+
+        # Apply post-match validation (e.g., Luhn for credit cards)
+        validated = []
+        for name, start, end, match_text in line_matches:
+            validator = next((p.get("validate") for p in patterns if p["name"] == name), None)
+            if validator == "luhn" and not luhn_check(match_text):
+                continue
+            validated.append((name, start, end, match_text))
+        line_matches = validated
 
         # Remove generic matches that overlap with any specific match
         specific = [(n, s, e) for n, s, e, _ in line_matches if n not in GENERIC_PATTERNS]
@@ -256,6 +268,21 @@ def entropy(s):
     freq = Counter(s)
     length = len(s)
     return -sum(count / length * log2(count / length) for count in freq.values())
+
+
+def luhn_check(number_str):
+    """Validate a credit card number using the Luhn algorithm."""
+    digits = [int(c) for c in number_str if c.isdigit()]
+    if len(digits) < 13 or len(digits) > 19:
+        return False
+    checksum = 0
+    for i, d in enumerate(reversed(digits)):
+        if i % 2 == 1:
+            d *= 2
+            if d > 9:
+                d -= 9
+        checksum += d
+    return checksum % 10 == 0
 
 
 def load_custom_patterns(config_path):
