@@ -925,6 +925,9 @@ def parse_args(argv=None):
     scrub_parser.add_argument("--aggressive", action="store_true",
                               help="Also scrub generic pattern matches (may degrade session context)")
 
+    # --- stats subcommand ---
+    subparsers.add_parser("stats", help="Show Claude Code usage statistics")
+
     # --- sessions subcommand ---
     sessions_parser = subparsers.add_parser("sessions",
                                             help="List and resume sessions")
@@ -1276,6 +1279,134 @@ def print_verbose_detail(results):
                     print(f"    Line {line_num}: {name}{tier_tag} ({preview})")
 
 
+def gather_stats(claude_dir):
+    """Mine session JSONL files for usage statistics."""
+    projects_dir = claude_dir / "projects"
+    total_sessions = 0
+    total_user = 0
+    total_assistant = 0
+    project_sessions = {}  # project_name -> session count
+    project_messages = {}  # project_name -> total messages
+    first_ts = None
+    biggest_file = None
+    biggest_size = 0
+    biggest_msgs = 0
+
+    if projects_dir.is_dir():
+        for pdir in projects_dir.iterdir():
+            if not pdir.is_dir():
+                continue
+            project_name = pdir.name
+            for jsonl_file in pdir.glob("*.jsonl"):
+                total_sessions += 1
+                project_sessions[project_name] = project_sessions.get(project_name, 0) + 1
+                file_user = 0
+                file_assistant = 0
+                try:
+                    with open(jsonl_file) as f:
+                        for line in f:
+                            try:
+                                d = json.loads(line)
+                            except json.JSONDecodeError:
+                                continue
+                            msg_type = d.get("type")
+                            if msg_type == "user":
+                                file_user += 1
+                            elif msg_type == "assistant":
+                                file_assistant += 1
+                            ts = d.get("timestamp")
+                            if ts:
+                                dt = parse_timestamp(ts)
+                                if dt and (first_ts is None or dt < first_ts):
+                                    first_ts = dt
+                except OSError:
+                    continue
+                total_user += file_user
+                total_assistant += file_assistant
+                file_msgs = file_user + file_assistant
+                project_messages[project_name] = project_messages.get(project_name, 0) + file_msgs
+                try:
+                    fsize = jsonl_file.stat().st_size
+                except OSError:
+                    fsize = 0
+                if fsize > biggest_size:
+                    biggest_size = fsize
+                    biggest_file = f"{project_name}/{jsonl_file.name}"
+                    biggest_msgs = file_msgs
+
+    # Disk usage across all of claude_dir
+    disk_total = 0
+    if claude_dir.is_dir():
+        for dirpath, _dirnames, filenames in os.walk(claude_dir):
+            for fname in filenames:
+                try:
+                    disk_total += os.path.getsize(os.path.join(dirpath, fname))
+                except OSError:
+                    pass
+
+    # Most active project
+    most_active = None
+    most_active_sessions = 0
+    most_active_msgs = 0
+    for proj, count in project_sessions.items():
+        if count > most_active_sessions:
+            most_active = proj
+            most_active_sessions = count
+            most_active_msgs = project_messages.get(proj, 0)
+
+    return {
+        "total_sessions": total_sessions,
+        "total_projects": len(project_sessions),
+        "total_user_messages": total_user,
+        "total_assistant_messages": total_assistant,
+        "first_session_date": first_ts.strftime("%Y-%m-%d") if first_ts else None,
+        "disk_usage_bytes": disk_total,
+        "most_active_project": project_path_from_dir_name(most_active) if most_active else None,
+        "most_active_project_sessions": most_active_sessions,
+        "most_active_project_messages": most_active_msgs,
+        "biggest_file_name": biggest_file,
+        "biggest_file_size": biggest_size,
+        "biggest_file_messages": biggest_msgs,
+    }
+
+
+def format_bytes(n):
+    """Format byte count as human-readable size."""
+    if n < 1024:
+        return f"{n} B"
+    elif n < 1024 * 1024:
+        return f"{n / 1024:.1f} KB"
+    elif n < 1024 * 1024 * 1024:
+        return f"{n / (1024 * 1024):.1f} MB"
+    else:
+        return f"{n / (1024 * 1024 * 1024):.1f} GB"
+
+
+def format_stats(stats):
+    """Render stats dict into display text."""
+    lines = ["📊 Claude Code Stats", ""]
+    total_msgs = stats["total_user_messages"] + stats["total_assistant_messages"]
+    lines.append(f"  Sessions:      {stats['total_sessions']:,} across {stats['total_projects']} projects")
+    lines.append(f"  Messages:      {total_msgs:,} (you: {stats['total_user_messages']:,} / claude: {stats['total_assistant_messages']:,})")
+    if stats["first_session_date"]:
+        dt = datetime.strptime(stats["first_session_date"], "%Y-%m-%d")
+        days_ago = (datetime.now() - dt).days
+        lines.append(f"  First session: {stats['first_session_date']} ({days_ago} days ago)")
+    lines.append(f"  Data on disk:  {format_bytes(stats['disk_usage_bytes'])}")
+    if stats["most_active_project"]:
+        proj = shorten_project(stats["most_active_project"])
+        lines.append(f"  Most active:   {proj} ({stats['most_active_project_sessions']} sessions, {stats['most_active_project_messages']:,} msgs)")
+    if stats["biggest_file_name"]:
+        lines.append(f"  Biggest file:  {stats['biggest_file_name']} ({stats['biggest_file_messages']:,} msgs, {format_bytes(stats['biggest_file_size'])})")
+    return "\n".join(lines)
+
+
+def cmd_stats(args):
+    """Show Claude Code usage statistics."""
+    stats = gather_stats(CLAUDE_DIR)
+    print(format_stats(stats))
+
+
 def cmd_scan(args):
     """Scan sessions for secrets."""
     # If verbose and we have a fresh cache, use it instead of rescanning
@@ -1419,6 +1550,8 @@ def main():
         cmd_scan(args)
     elif args.command == "scrub":
         cmd_scrub(args)
+    elif args.command == "stats":
+        cmd_stats(args)
 
 
 if __name__ == "__main__":

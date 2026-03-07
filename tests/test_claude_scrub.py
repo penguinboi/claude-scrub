@@ -976,3 +976,203 @@ class TestScanTierOutput(unittest.TestCase):
         output = buf.getvalue()
         self.assertNotIn("[specific]", output.lower())
         self.assertNotIn("[generic]", output.lower())
+
+
+# ---------------------------------------------------------------------------
+# Stats command
+# ---------------------------------------------------------------------------
+
+class TestGatherStats(unittest.TestCase):
+    """Tests for gather_stats() which mines session JSONL files for usage data."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp())
+        self.projects_dir = self.tmpdir / "projects"
+        self.projects_dir.mkdir()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def _write_session(self, project_name, session_id, lines):
+        """Helper to write a JSONL session file with the given JSON lines."""
+        import json
+        pdir = self.projects_dir / project_name
+        pdir.mkdir(exist_ok=True)
+        fpath = pdir / f"{session_id}.jsonl"
+        with open(fpath, "w") as f:
+            for entry in lines:
+                f.write(json.dumps(entry) + "\n")
+        return fpath
+
+    def test_gather_stats_empty_dir(self):
+        """Returns zero counts when no session files exist."""
+        stats = cs.gather_stats(self.tmpdir)
+        self.assertEqual(stats["total_sessions"], 0)
+        self.assertEqual(stats["total_user_messages"], 0)
+        self.assertEqual(stats["total_assistant_messages"], 0)
+        self.assertEqual(stats["total_projects"], 0)
+
+    def test_gather_stats_counts_messages(self):
+        """Counts user and assistant messages from JSONL entries."""
+        self._write_session("proj1", "abc", [
+            {"type": "user", "timestamp": "2026-01-15T10:00:00Z"},
+            {"type": "assistant", "timestamp": "2026-01-15T10:00:01Z"},
+            {"type": "assistant", "timestamp": "2026-01-15T10:00:02Z"},
+            {"type": "user", "timestamp": "2026-01-15T10:00:03Z"},
+            {"type": "progress"},  # not counted
+        ])
+        stats = cs.gather_stats(self.tmpdir)
+        self.assertEqual(stats["total_sessions"], 1)
+        self.assertEqual(stats["total_user_messages"], 2)
+        self.assertEqual(stats["total_assistant_messages"], 2)
+
+    def test_gather_stats_multiple_projects(self):
+        """Counts sessions and projects across multiple project dirs."""
+        self._write_session("proj1", "s1", [
+            {"type": "user", "timestamp": "2026-01-15T10:00:00Z"},
+            {"type": "assistant", "timestamp": "2026-01-15T10:00:01Z"},
+        ])
+        self._write_session("proj1", "s2", [
+            {"type": "user", "timestamp": "2026-02-01T10:00:00Z"},
+        ])
+        self._write_session("proj2", "s3", [
+            {"type": "user", "timestamp": "2026-03-01T10:00:00Z"},
+            {"type": "assistant", "timestamp": "2026-03-01T10:00:01Z"},
+        ])
+        stats = cs.gather_stats(self.tmpdir)
+        self.assertEqual(stats["total_sessions"], 3)
+        self.assertEqual(stats["total_projects"], 2)
+        self.assertEqual(stats["total_user_messages"], 3)
+        self.assertEqual(stats["total_assistant_messages"], 2)
+
+    def test_gather_stats_finds_earliest_session(self):
+        """Reports the earliest timestamp across all sessions."""
+        self._write_session("proj1", "old", [
+            {"type": "user", "timestamp": "2025-06-14T08:00:00Z"},
+        ])
+        self._write_session("proj1", "new", [
+            {"type": "user", "timestamp": "2026-03-01T10:00:00Z"},
+        ])
+        stats = cs.gather_stats(self.tmpdir)
+        self.assertEqual(stats["first_session_date"], "2025-06-14")
+
+    def test_gather_stats_most_active_project(self):
+        """Reports the project with the most sessions."""
+        self._write_session("proj1", "s1", [{"type": "user", "timestamp": "2026-01-01T00:00:00Z"}])
+        self._write_session("proj1", "s2", [{"type": "user", "timestamp": "2026-01-02T00:00:00Z"}])
+        self._write_session("proj1", "s3", [{"type": "user", "timestamp": "2026-01-03T00:00:00Z"}])
+        self._write_session("proj2", "s4", [{"type": "user", "timestamp": "2026-01-04T00:00:00Z"}])
+        stats = cs.gather_stats(self.tmpdir)
+        self.assertEqual(stats["most_active_project_sessions"], 3)
+        self.assertIn("proj1", stats["most_active_project"])
+
+    def test_gather_stats_biggest_file(self):
+        """Reports the largest session file by size."""
+        # Write a small session
+        self._write_session("proj1", "small", [
+            {"type": "user", "timestamp": "2026-01-01T00:00:00Z"},
+        ])
+        # Write a bigger session
+        self._write_session("proj1", "big", [
+            {"type": "user", "timestamp": "2026-01-01T00:00:00Z", "message": {"content": "x" * 1000}},
+            {"type": "assistant", "timestamp": "2026-01-01T00:00:01Z", "message": {"content": "y" * 2000}},
+            {"type": "user", "timestamp": "2026-01-01T00:00:02Z", "message": {"content": "z" * 1500}},
+        ])
+        stats = cs.gather_stats(self.tmpdir)
+        self.assertIn("big", stats["biggest_file_name"])
+        self.assertGreater(stats["biggest_file_size"], 0)
+
+    def test_gather_stats_disk_usage(self):
+        """Reports total disk usage of the claude dir."""
+        self._write_session("proj1", "s1", [
+            {"type": "user", "timestamp": "2026-01-01T00:00:00Z", "message": {"content": "hello"}},
+        ])
+        stats = cs.gather_stats(self.tmpdir)
+        self.assertGreater(stats["disk_usage_bytes"], 0)
+
+    def test_gather_stats_biggest_file_messages(self):
+        """Reports message count for the biggest session file."""
+        self._write_session("proj1", "big", [
+            {"type": "user", "timestamp": "2026-01-01T00:00:00Z"},
+            {"type": "assistant", "timestamp": "2026-01-01T00:00:01Z"},
+            {"type": "user", "timestamp": "2026-01-01T00:00:02Z"},
+            {"type": "assistant", "timestamp": "2026-01-01T00:00:03Z"},
+        ])
+        stats = cs.gather_stats(self.tmpdir)
+        self.assertEqual(stats["biggest_file_messages"], 4)
+
+
+class TestFormatStats(unittest.TestCase):
+    """Tests for format_stats() which renders stats into display text."""
+
+    def _sample_stats(self):
+        return {
+            "total_sessions": 142,
+            "total_projects": 11,
+            "total_user_messages": 2103,
+            "total_assistant_messages": 2788,
+            "first_session_date": "2025-06-14",
+            "disk_usage_bytes": 888_000_000,
+            "most_active_project": "~/Code/regrade3",
+            "most_active_project_sessions": 34,
+            "most_active_project_messages": 1204,
+            "biggest_file_name": "regrade3/abc123.jsonl",
+            "biggest_file_size": 14_900_000,
+            "biggest_file_messages": 2847,
+        }
+
+    def test_format_stats_includes_session_count(self):
+        output = cs.format_stats(self._sample_stats())
+        self.assertIn("142", output)
+        self.assertIn("11 projects", output)
+
+    def test_format_stats_includes_message_counts(self):
+        output = cs.format_stats(self._sample_stats())
+        self.assertIn("2,103", output)
+        self.assertIn("2,788", output)
+
+    def test_format_stats_includes_first_session_date(self):
+        output = cs.format_stats(self._sample_stats())
+        self.assertIn("2025-06-14", output)
+
+    def test_format_stats_includes_disk_usage(self):
+        output = cs.format_stats(self._sample_stats())
+        # 888 MB
+        self.assertIn("MB", output)
+
+    def test_format_stats_includes_most_active(self):
+        output = cs.format_stats(self._sample_stats())
+        self.assertIn("regrade3", output)
+        self.assertIn("34 sessions", output)
+
+    def test_format_stats_includes_biggest_file(self):
+        output = cs.format_stats(self._sample_stats())
+        self.assertIn("abc123", output)
+
+    def test_format_stats_handles_zero_sessions(self):
+        """Gracefully handles empty data."""
+        stats = {
+            "total_sessions": 0,
+            "total_projects": 0,
+            "total_user_messages": 0,
+            "total_assistant_messages": 0,
+            "first_session_date": None,
+            "disk_usage_bytes": 0,
+            "most_active_project": None,
+            "most_active_project_sessions": 0,
+            "most_active_project_messages": 0,
+            "biggest_file_name": None,
+            "biggest_file_size": 0,
+            "biggest_file_messages": 0,
+        }
+        output = cs.format_stats(stats)
+        self.assertIn("0", output)
+        # Should not crash
+
+
+class TestStatsSubcommand(unittest.TestCase):
+    """Tests for stats argparse integration."""
+
+    def test_stats_subcommand_parses(self):
+        args = cs.parse_args(["stats"])
+        self.assertEqual(args.command, "stats")
