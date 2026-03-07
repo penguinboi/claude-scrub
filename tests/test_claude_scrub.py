@@ -797,3 +797,60 @@ class TestEndToEnd(unittest.TestCase):
             len(m) for cat in results4.values() for m in cat.values()
         )
         self.assertEqual(final_count, 0)
+
+
+class TestTieredScrub(unittest.TestCase):
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.claude_dir = Path(self.tmpdir) / ".claude"
+        self.no_ccrider = Path(self.tmpdir) / "no-ccrider.db"
+        proj = self.claude_dir / "projects" / "-Users-test-Code-myapp"
+        proj.mkdir(parents=True)
+        self.secret_file = proj / "session.jsonl"
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_default_scrub_keeps_generic_matches(self):
+        """Default scrub should NOT redact low-entropy generic matches."""
+        self.secret_file.write_text(
+            '{"message":"password=development_mode and AKIAIOSFODNN7EXAMPLE"}\n'
+        )
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        cs.scrub_targets(targets, patterns)
+        content = self.secret_file.read_text()
+        self.assertNotIn("AKIAIOSFODNN7EXAMPLE", content, "Specific match should be scrubbed")
+        self.assertIn("development_mode", content, "Low-entropy generic should be preserved")
+
+    def test_aggressive_scrub_removes_generic_matches(self):
+        """--aggressive should redact generic matches too."""
+        self.secret_file.write_text(
+            '{"message":"password=development_mode here"}\n'
+        )
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        cs.scrub_targets(targets, patterns, aggressive=True)
+        content = self.secret_file.read_text()
+        self.assertNotIn("development_mode", content, "Aggressive should scrub generic")
+        self.assertIn("[REDACTED:", content)
+
+    def test_high_entropy_generic_scrubbed_by_default(self):
+        """High-entropy generic match should be scrubbed even without --aggressive."""
+        self.secret_file.write_text(
+            '{"message":"api_key=sK3j8fAx7mNp2qRwL9vB"}\n'
+        )
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        cs.scrub_targets(targets, patterns)
+        content = self.secret_file.read_text()
+        self.assertNotIn("sK3j8fAx7mNp2qRwL9vB", content, "High-entropy generic should be scrubbed")
+
+    def test_aggressive_flag_parses(self):
+        args = cs.parse_args(["scrub", "--aggressive"])
+        self.assertTrue(args.aggressive)
+
+    def test_aggressive_default_false(self):
+        args = cs.parse_args(["scrub"])
+        self.assertFalse(args.aggressive)

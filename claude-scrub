@@ -172,10 +172,29 @@ def find_secrets(text, patterns):
     return matches
 
 
-def redact_secrets(text, patterns):
-    """Replace each secret match with [REDACTED:<pattern_name>]."""
+def redact_secrets(text, patterns, aggressive=False):
+    """Replace each secret match with [REDACTED:<pattern_name>].
+
+    By default, only redacts specific-tier patterns plus generic matches
+    with high entropy. When aggressive=True, redacts all patterns.
+    """
     for p in patterns:
-        text = p["regex"].sub(f"[REDACTED:{p['name']}]", text)
+        tier = p.get("tier", "specific")
+        if tier == "generic" and not aggressive:
+            # Only redact high-entropy generic matches
+            def _replace_if_high_entropy(m, pattern=p):
+                matched = m.group()
+                eq_pos = matched.find("=")
+                if eq_pos < 0:
+                    eq_pos = matched.find(":")
+                if eq_pos >= 0:
+                    value = matched[eq_pos + 1:].strip()
+                    if entropy(value) >= ENTROPY_THRESHOLD:
+                        return f"[REDACTED:{pattern['name']}]"
+                return matched  # Keep original
+            text = p["regex"].sub(_replace_if_high_entropy, text)
+        else:
+            text = p["regex"].sub(f"[REDACTED:{p['name']}]", text)
     return text
 
 
@@ -558,10 +577,12 @@ def filter_scrub_targets(targets, include=""):
     }
 
 
-def scrub_targets(targets, patterns):
+def scrub_targets(targets, patterns, aggressive=False):
     """Replace secrets in-place across all target files.
 
     Returns stats dict with total_secrets, total_files, and per-category counts.
+    By default, only redacts specific-tier patterns plus high-entropy generic
+    matches. When aggressive=True, redacts all patterns unconditionally.
     """
     stats = {"total_secrets": 0, "total_files": 0, "categories": {}}
     for category, files in targets.items():
@@ -572,7 +593,7 @@ def scrub_targets(targets, patterns):
                 original = filepath.read_text(errors="replace")
             except OSError:
                 continue
-            scrubbed = redact_secrets(original, patterns)
+            scrubbed = redact_secrets(original, patterns, aggressive=aggressive)
             if scrubbed != original:
                 filepath.write_text(scrubbed)
                 cat_files += 1
@@ -901,6 +922,8 @@ def parse_args(argv=None):
                               help="Comma-separated data types to include")
     scrub_parser.add_argument("--dry-run", action="store_true",
                               help="Show what would be scrubbed without modifying files")
+    scrub_parser.add_argument("--aggressive", action="store_true",
+                              help="Also scrub generic pattern matches (may degrade session context)")
 
     # --- sessions subcommand ---
     sessions_parser = subparsers.add_parser("sessions",
@@ -1316,6 +1339,10 @@ def cmd_scrub(args):
             print("\nRun without --dry-run to scrub.")
         return
 
+    if args.aggressive:
+        print("\n⚠️  Aggressive mode: also scrubbing generic pattern matches.")
+        print("   This may redact non-secret values and degrade session context.")
+
     claude_running = is_claude_code_running()
     if claude_running:
         print(f"\n🚨 Claude Code is currently running!")
@@ -1331,7 +1358,7 @@ def cmd_scrub(args):
             print("Aborted.")
             return
 
-    stats = scrub_targets(scrub_filtered, patterns)
+    stats = scrub_targets(scrub_filtered, patterns, aggressive=args.aggressive)
     print(f"\nScrubbed {stats['total_secrets']} secrets across {stats['total_files']} files.")
 
     if secret_counts:
