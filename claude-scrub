@@ -51,66 +51,138 @@ def get_builtin_patterns():
     return [
         # --- AI providers ---
         {"name": "Anthropic API Key", "regex": re.compile(r"sk-ant-api\d{2}-[A-Za-z0-9_-]{20,}"), "tier": "specific"},
-        {"name": "Anthropic Admin Key", "regex": re.compile(r"sk-ant-admin\d{2}-[A-Za-z0-9_-]{20,}"), "tier": "specific"},
+        {
+            "name": "Anthropic Admin Key",
+            "regex": re.compile(r"sk-ant-admin\d{2}-[A-Za-z0-9_-]{20,}"),
+            "tier": "specific",
+        },
         {"name": "OpenAI API Key", "regex": re.compile(r"sk-proj-[A-Za-z0-9_-]{20,}"), "tier": "specific"},
         {"name": "Generic SK Key", "regex": re.compile(r"sk-[A-Za-z0-9]{20,}"), "tier": "specific"},
-
         # --- Cloud providers ---
         {"name": "AWS Access Key", "regex": re.compile(r"(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}"), "tier": "specific"},
-        {"name": "AWS Secret Key Assignment", "regex": re.compile(r"(?:aws_secret_access_key|secret_access_key)\s*[:=]\s*\S+", re.IGNORECASE), "tier": "specific"},
-        {"name": "Amazon MWS Token", "regex": re.compile(r"amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"), "tier": "specific"},
+        {
+            "name": "AWS Secret Key Assignment",
+            "regex": re.compile(r"(?:aws_secret_access_key|secret_access_key)\s*[:=]\s*\S+", re.IGNORECASE),
+            "tier": "specific",
+        },
+        {
+            "name": "Amazon MWS Token",
+            "regex": re.compile(r"amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"),
+            "tier": "specific",
+        },
         {"name": "Google API Key", "regex": re.compile(r"AIza[0-9A-Za-z\-_]{35}"), "tier": "specific"},
         {"name": "Google OAuth Token", "regex": re.compile(r"ya29\.[0-9A-Za-z\-_]+"), "tier": "specific"},
-        {"name": "Google OAuth Client ID", "regex": re.compile(r"[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com"), "tier": "specific"},
-        {"name": "Azure AD Client Secret", "regex": re.compile(r"[a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34}"), "tier": "specific"},
-
+        {
+            "name": "Google OAuth Client ID",
+            "regex": re.compile(r"[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com"),
+            "tier": "specific",
+        },
+        {
+            "name": "Azure AD Client Secret",
+            "regex": re.compile(r"[a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34}"),
+            "tier": "specific",
+        },
         # --- Payment ---
         {"name": "Stripe Key", "regex": re.compile(r"[sr]k_(?:test|live|prod)_[a-zA-Z0-9]{10,99}"), "tier": "specific"},
         {"name": "Square Access Token", "regex": re.compile(r"sq0atp-[0-9A-Za-z\-_]{22}"), "tier": "specific"},
         {"name": "Square OAuth Secret", "regex": re.compile(r"sq0csp-[0-9A-Za-z\-_]{43}"), "tier": "specific"},
-        {"name": "PayPal Braintree Token", "regex": re.compile(r"access_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}"), "tier": "specific"},
-
+        {
+            "name": "PayPal Braintree Token",
+            "regex": re.compile(r"access_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}"),
+            "tier": "specific",
+        },
         # --- Communication / email ---
-        {"name": "Slack Token", "regex": re.compile(r"xox[pboa]-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*"), "tier": "specific"},
-        {"name": "Slack Webhook URL", "regex": re.compile(r"https://hooks\.slack\.com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}"), "tier": "specific"},
-        {"name": "Discord Token", "regex": re.compile(r"(?:discord|bot)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9._-]{50,}", re.IGNORECASE), "tier": "specific"},
+        {
+            "name": "Slack Token",
+            "regex": re.compile(r"xox[pboa]-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*"),
+            "tier": "specific",
+        },
+        {
+            "name": "Slack Webhook URL",
+            "regex": re.compile(
+                r"https://hooks\.slack\.com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}"
+            ),
+            "tier": "specific",
+        },
+        {
+            "name": "Discord Token",
+            "regex": re.compile(r"(?:discord|bot)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9._-]{50,}", re.IGNORECASE),
+            "tier": "specific",
+        },
         {"name": "Twilio API Key", "regex": re.compile(r"SK[0-9a-fA-F]{32}"), "tier": "specific"},
         {"name": "SendGrid API Token", "regex": re.compile(r"SG\.[a-zA-Z0-9=_\-.]{66}"), "tier": "specific"},
         {"name": "Mailchimp API Key", "regex": re.compile(r"[0-9a-f]{32}-us[0-9]{1,2}"), "tier": "specific"},
         {"name": "Mailgun API Key", "regex": re.compile(r"key-[0-9a-zA-Z]{32}"), "tier": "specific"},
-
         # --- Dev platforms ---
         {"name": "GitHub Token", "regex": re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}"), "tier": "specific"},
         {"name": "GitLab Token", "regex": re.compile(r"gl(?:pat|ptt|rt)-[A-Za-z0-9_-]{20,}"), "tier": "specific"},
         {"name": "npm Access Token", "regex": re.compile(r"npm_[a-z0-9]{36}"), "tier": "specific"},
         {"name": "PyPI API Token", "regex": re.compile(r"pypi-[A-Za-z0-9_-]{50,}"), "tier": "specific"},
         {"name": "Shopify Access Token", "regex": re.compile(r"shpat_[a-fA-F0-9]{32}"), "tier": "specific"},
-        {"name": "Heroku API Key", "regex": re.compile(r"(?:heroku)[\w.-]{0,20}[\s:=]+['\"]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE), "tier": "specific"},
+        {
+            "name": "Heroku API Key",
+            "regex": re.compile(
+                r"(?:heroku)[\w.-]{0,20}[\s:=]+['\"]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                re.IGNORECASE,
+            ),
+            "tier": "specific",
+        },
         {"name": "Notion API Token", "regex": re.compile(r"ntn_[0-9]{11}[A-Za-z0-9]{32,}"), "tier": "specific"},
         {"name": "Postman API Token", "regex": re.compile(r"PMAK-[a-f0-9]{24}-[a-f0-9]{34}"), "tier": "specific"},
-        {"name": "Datadog Key", "regex": re.compile(r"(?:datadog|dd)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{32,40}", re.IGNORECASE), "tier": "specific"},
-        {"name": "Vercel Token", "regex": re.compile(r"(?:vercel)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9]{24,}", re.IGNORECASE), "tier": "specific"},
-
+        {
+            "name": "Datadog Key",
+            "regex": re.compile(r"(?:datadog|dd)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{32,40}", re.IGNORECASE),
+            "tier": "specific",
+        },
+        {
+            "name": "Vercel Token",
+            "regex": re.compile(r"(?:vercel)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9]{24,}", re.IGNORECASE),
+            "tier": "specific",
+        },
         # --- Social / media ---
         {"name": "Facebook Access Token", "regex": re.compile(r"EAACEdEose0cBA[0-9A-Za-z]+"), "tier": "specific"},
-        {"name": "Twitch Token", "regex": re.compile(r"(?:twitch)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{30,}", re.IGNORECASE), "tier": "specific"},
-
+        {
+            "name": "Twitch Token",
+            "regex": re.compile(r"(?:twitch)[\w.-]{0,20}[\s:=]+['\"]?[a-z0-9]{30,}", re.IGNORECASE),
+            "tier": "specific",
+        },
         # --- Cryptographic material ---
         {"name": "Private Key", "regex": re.compile(r"-----BEGIN[A-Z ]* PRIVATE KEY[A-Z ]*-----"), "tier": "specific"},
         {"name": "PGP Private Key", "regex": re.compile(r"-----BEGIN PGP PRIVATE KEY BLOCK-----"), "tier": "specific"},
-        {"name": "JWT Token", "regex": re.compile(r"\bey[a-zA-Z0-9]{17,}\.ey[a-zA-Z0-9/\\_-]{17,}\."), "tier": "specific"},
-
+        {
+            "name": "JWT Token",
+            "regex": re.compile(r"\bey[a-zA-Z0-9]{17,}\.ey[a-zA-Z0-9/\\_-]{17,}\."),
+            "tier": "specific",
+        },
         # --- PII (validated) ---
-        {"name": "Credit Card Number", "regex": re.compile(r'\b[3-6]\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{1,4}\b'), "validate": "luhn", "tier": "specific"},
-
+        {
+            "name": "Credit Card Number",
+            "regex": re.compile(r"\b[3-6]\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{1,4}\b"),
+            "validate": "luhn",
+            "tier": "specific",
+        },
         # --- High-confidence catch-all ---
-        {"name": "Bearer Token", "regex": re.compile(r"Bearer\s+[A-Za-z0-9._-]{20,}", re.IGNORECASE), "tier": "specific"},
-        {"name": "Authorization Header", "regex": re.compile(r'Authorization:\s*[^\s",}\]]+', re.IGNORECASE), "tier": "specific"},
+        {
+            "name": "Bearer Token",
+            "regex": re.compile(r"Bearer\s+[A-Za-z0-9._-]{20,}", re.IGNORECASE),
+            "tier": "specific",
+        },
+        {
+            "name": "Authorization Header",
+            "regex": re.compile(r'Authorization:\s*[^\s",}\]]+', re.IGNORECASE),
+            "tier": "specific",
+        },
         {"name": "Password in URL", "regex": re.compile(r'://[^@\s",}\]]+:[^@\s",}\]]+@'), "tier": "specific"},
         {"name": "Cloudinary URL", "regex": re.compile(r'cloudinary://[^\s",}\]]+'), "tier": "specific"},
-
         # --- Generic / catch-all ---
-        {"name": "Generic Secret Assignment", "regex": re.compile(r'(?:password|credential|passwd|secret_key|api_key|apikey|secret_token)\s*[:=]\s*[^\s",}\]]{8,}', re.IGNORECASE), "tier": "generic"},
+        {
+            "name": "Generic Secret Assignment",
+            "regex": re.compile(
+                r'(?:password|credential|passwd|secret_key|api_key|apikey|secret_token)\s*[:=]\s*[^\s",}\]]{8,}',
+                re.IGNORECASE,
+            ),
+            "tier": "generic",
+        },
     ]
 
 
@@ -165,7 +237,7 @@ def find_secrets(text, patterns):
                 if eq_pos < 0:
                     eq_pos = match_text.find(":")
                 if eq_pos >= 0:
-                    value = match_text[eq_pos + 1:].strip()
+                    value = match_text[eq_pos + 1 :].strip()
                     if entropy(value) >= ENTROPY_THRESHOLD:
                         effective_tier = "specific"
             matches.append((name, match_text, line_num, effective_tier))
@@ -188,10 +260,11 @@ def redact_secrets(text, patterns, aggressive=False):
                 if eq_pos < 0:
                     eq_pos = matched.find(":")
                 if eq_pos >= 0:
-                    value = matched[eq_pos + 1:].strip()
+                    value = matched[eq_pos + 1 :].strip()
                     if entropy(value) >= ENTROPY_THRESHOLD:
                         return f"[REDACTED:{pattern['name']}]"
                 return matched  # Keep original
+
             text = p["regex"].sub(_replace_if_high_entropy, text)
         else:
             text = p["regex"].sub(f"[REDACTED:{p['name']}]", text)
@@ -213,7 +286,8 @@ def is_claude_code_running():
     try:
         result = subprocess.run(
             ["pgrep", "-f", "claude"],
-            capture_output=True, timeout=5,
+            capture_output=True,
+            timeout=5,
         )
         return result.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
@@ -237,6 +311,7 @@ def parse_simple_toml(text):
     """Parse a minimal TOML subset supporting [[array]] tables and string values."""
     try:
         import tomllib
+
         return tomllib.loads(text)
     except ImportError:
         pass
@@ -259,8 +334,7 @@ def parse_simple_toml(text):
             key, _, val = line.partition("=")
             key = key.strip()
             val = val.strip()
-            if (val.startswith('"') and val.endswith('"')) or \
-               (val.startswith("'") and val.endswith("'")):
+            if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
                 val = val[1:-1]
             val = val.replace("\\\\", "\x00").replace("\\n", "\n").replace("\\t", "\t").replace("\x00", "\\")
             current_item[key] = val
@@ -279,9 +353,9 @@ def make_json_safe_regex(regex_str):
     class that excludes JSON structural characters.
     """
     # \S and \S+ and \S{n,} -> [^\s",}\]]  (same quantifier preserved)
-    safe = re.sub(r'\\S(?![a-zA-Z])', r'[^\\s",}\\]]', regex_str)
+    safe = re.sub(r"\\S(?![a-zA-Z])", r'[^\\s",}\\]]', regex_str)
     # [^\s] (explicit negated whitespace class) -> [^\s",}\]]
-    safe = re.sub(r'\[\^\\s\]', r'[^\\s",}\\]]', safe)
+    safe = re.sub(r"\[\^\\s\]", r'[^\\s",}\\]]', safe)
     return safe
 
 
@@ -367,6 +441,7 @@ def load_patterns_db(toml_path):
 def download_patterns_db():
     """Download secrets-patterns-db gitleaks TOML to local cache."""
     import urllib.request
+
     PATTERNS_DB_CACHE.parent.mkdir(parents=True, exist_ok=True)
     print(f"Downloading patterns-db to {PATTERNS_DB_CACHE}...")
     try:
@@ -506,7 +581,8 @@ def scan_targets(targets, patterns, show_progress=False):
         if show_progress:
             file_noun = "file" if cat_total == 1 else "files"
             noun = "match" if cat_secrets == 1 else "matches"
-            print(f"\r[{global_done}/{global_total}] {label + ':':<16}{cat_total} {file_noun} scanned, {cat_secrets} {noun} found")
+            progress = f"\r[{global_done}/{global_total}] {label + ':':<16}"
+            print(f"{progress}{cat_total} {file_noun} scanned, {cat_secrets} {noun} found")
     return results
 
 
@@ -520,8 +596,7 @@ def save_scan_cache(results, targets):
         serialized = {}
         for filepath, matches in file_results.items():
             serialized[str(filepath)] = [
-                {"name": name, "line": line_num, "tier": tier}
-                for name, match_text, line_num, tier in matches
+                {"name": name, "line": line_num, "tier": tier} for name, match_text, line_num, tier in matches
             ]
         cache["categories"][category] = {
             "scanned": scanned_count,
@@ -558,8 +633,7 @@ def load_scan_cache():
         for filepath_str, matches_data in cat_data.get("files", {}).items():
             filepath = Path(filepath_str)
             matches = [
-                (m["name"], m.get("match", "(redacted)"), m["line"], m.get("tier", "specific"))
-                for m in matches_data
+                (m["name"], m.get("match", "(redacted)"), m["line"], m.get("tier", "specific")) for m in matches_data
             ]
             file_results[filepath] = matches
         results[category] = file_results
@@ -659,6 +733,7 @@ def format_scan_report(results, verbose=False, targets=None):
 # ---------------------------------------------------------------------------
 # Data loading (shared between interactive and print modes)
 # ---------------------------------------------------------------------------
+
 
 def project_path_from_dir_name(dir_name):
     """Convert a project directory name back to a path."""
@@ -808,7 +883,7 @@ def shorten_project(path):
     """Shorten project path for display."""
     home = str(Path.home())
     if path.startswith(home):
-        return "~" + path[len(home):]
+        return "~" + path[len(home) :]
     return path
 
 
@@ -852,7 +927,7 @@ def make_summary(session, max_len=80):
     if summary and summary not in USELESS_SUMMARIES:
         summary = scrub_secrets(summary)
         if len(summary) > max_len:
-            summary = summary[:max_len - 3] + "..."
+            summary = summary[: max_len - 3] + "..."
         return summary
 
     prompt = session.get("firstPrompt", "")
@@ -861,7 +936,7 @@ def make_summary(session, max_len=80):
         prompt = scrub_secrets(prompt)
         if prompt:
             if len(prompt) > max_len:
-                prompt = prompt[:max_len - 3] + "..."
+                prompt = prompt[: max_len - 3] + "..."
             return prompt
 
     return "(no summary)"
@@ -903,6 +978,7 @@ def filter_and_group(sessions, days, show_all, min_messages):
 # Parse arguments
 # ---------------------------------------------------------------------------
 
+
 def parse_args(argv=None):
     """Parse command-line arguments using argparse with subcommands."""
     parser = argparse.ArgumentParser(
@@ -915,49 +991,45 @@ def parse_args(argv=None):
 
     # --- scan subcommand ---
     scan_parser = subparsers.add_parser("scan", help="Scan sessions for secrets")
-    scan_parser.add_argument("-v", "--verbose", action="store_true",
-                             help="Show detailed output")
-    scan_parser.add_argument("--patterns-db", action="store_true",
-                             help="Use patterns-db for additional patterns")
-    scan_parser.add_argument("--rotation-list", action="store_true",
-                             help="Print a checklist of credentials to rotate")
+    scan_parser.add_argument("-v", "--verbose", action="store_true", help="Show detailed output")
+    scan_parser.add_argument("--patterns-db", action="store_true", help="Use patterns-db for additional patterns")
+    scan_parser.add_argument("--rotation-list", action="store_true", help="Print a checklist of credentials to rotate")
 
     # --- scrub subcommand ---
     scrub_parser = subparsers.add_parser("scrub", help="Remove secrets from sessions")
-    scrub_parser.add_argument("-v", "--verbose", action="store_true",
-                              help="Show detailed output")
-    scrub_parser.add_argument("-y", "--yes", action="store_true",
-                              help="Skip confirmation prompts")
-    scrub_parser.add_argument("--patterns-db", action="store_true",
-                              help="Use patterns-db for additional patterns")
-    scrub_parser.add_argument("--include", type=str, default=None,
-                              help="Comma-separated data types to include")
-    scrub_parser.add_argument("--dry-run", action="store_true",
-                              help="Show what would be scrubbed without modifying files")
-    scrub_parser.add_argument("--aggressive", action="store_true",
-                              help="Also scrub generic pattern matches (may degrade session context)")
-    scrub_parser.add_argument("--rotation-list", action="store_true",
-                              help="Print a checklist of credentials to rotate")
+    scrub_parser.add_argument("-v", "--verbose", action="store_true", help="Show detailed output")
+    scrub_parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompts")
+    scrub_parser.add_argument("--patterns-db", action="store_true", help="Use patterns-db for additional patterns")
+    scrub_parser.add_argument("--include", type=str, default=None, help="Comma-separated data types to include")
+    scrub_parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be scrubbed without modifying files"
+    )
+    scrub_parser.add_argument(
+        "--aggressive", action="store_true", help="Also scrub generic pattern matches (may degrade session context)"
+    )
+    scrub_parser.add_argument("--rotation-list", action="store_true", help="Print a checklist of credentials to rotate")
 
     # --- stats subcommand ---
     subparsers.add_parser("stats", help="Show Claude Code usage statistics")
 
     # --- sessions subcommand ---
-    sessions_parser = subparsers.add_parser("sessions",
-                                            help="List and resume sessions")
-    sessions_parser.add_argument("--latest", action="store_true",
-                                 help="Show only the most recent session per project")
-    sessions_parser.add_argument("--days", type=int, default=DEFAULT_DAYS,
-                                 help=f"Show sessions from the last N days (default: {DEFAULT_DAYS})")
-    sessions_parser.add_argument("--all", action="store_true",
-                                 help="Show all sessions regardless of age")
-    sessions_parser.add_argument("--min-msgs", type=int, default=MIN_MESSAGES,
-                                 dest="min_msgs",
-                                 help=f"Minimum message count to include (default: {MIN_MESSAGES})")
-    sessions_parser.add_argument("--print", action="store_true", dest="print_mode",
-                                 help="Output markdown instead of interactive picker")
-    sessions_parser.add_argument("-o", type=str, default=None,
-                                 help="Write markdown to FILE (implies --print)")
+    sessions_parser = subparsers.add_parser("sessions", help="List and resume sessions")
+    sessions_parser.add_argument("--latest", action="store_true", help="Show only the most recent session per project")
+    sessions_parser.add_argument(
+        "--days", type=int, default=DEFAULT_DAYS, help=f"Show sessions from the last N days (default: {DEFAULT_DAYS})"
+    )
+    sessions_parser.add_argument("--all", action="store_true", help="Show all sessions regardless of age")
+    sessions_parser.add_argument(
+        "--min-msgs",
+        type=int,
+        default=MIN_MESSAGES,
+        dest="min_msgs",
+        help=f"Minimum message count to include (default: {MIN_MESSAGES})",
+    )
+    sessions_parser.add_argument(
+        "--print", action="store_true", dest="print_mode", help="Output markdown instead of interactive picker"
+    )
+    sessions_parser.add_argument("-o", type=str, default=None, help="Write markdown to FILE (implies --print)")
 
     return parser.parse_args(argv)
 
@@ -965,6 +1037,7 @@ def parse_args(argv=None):
 # ---------------------------------------------------------------------------
 # Print mode (markdown output, original behavior)
 # ---------------------------------------------------------------------------
+
 
 def print_mode_output(by_project, days, show_all, latest_only, output_file):
     """Generate markdown output to stdout or file."""
@@ -1012,11 +1085,12 @@ def print_mode_output(by_project, days, show_all, latest_only, output_file):
 # Interactive mode (curses-based picker)
 # ---------------------------------------------------------------------------
 
+
 def truncate(text, width):
     """Truncate text to fit in width, adding ellipsis if needed."""
     if len(text) <= width:
         return text
-    return text[:width - 1] + "\u2026"
+    return text[: width - 1] + "\u2026"
 
 
 def draw_header(stdscr, title, width):
@@ -1125,9 +1199,9 @@ def interactive_mode(stdscr, by_project):
     # Set up colors
     curses.start_color()
     curses.use_default_colors()
-    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_CYAN)    # header
-    curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)   # footer
-    curses.init_pair(3, curses.COLOR_CYAN, -1)                    # selected item
+    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_CYAN)  # header
+    curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)  # footer
+    curses.init_pair(3, curses.COLOR_CYAN, -1)  # selected item
 
     # Sort projects by most recent session date
     project_list = []
@@ -1138,19 +1212,25 @@ def interactive_mode(stdscr, by_project):
         )
         session_count = len(sessions)
         total_msgs = sum(s.get("messageCount", 0) for s in sessions)
-        project_list.append({
-            "path": proj,
-            "sessions": sessions,
-            "most_recent": most_recent,
-            "session_count": session_count,
-            "total_msgs": total_msgs,
-        })
+        project_list.append(
+            {
+                "path": proj,
+                "sessions": sessions,
+                "most_recent": most_recent,
+                "session_count": session_count,
+                "total_msgs": total_msgs,
+            }
+        )
 
     project_list.sort(key=lambda x: x["most_recent"], reverse=True)
 
     def format_project(item, width):
         short = shorten_project(item["path"])
-        date = item["most_recent"].strftime("%Y-%m-%d") if item["most_recent"] != datetime.min.replace(tzinfo=timezone.utc) else "unknown"
+        date = (
+            item["most_recent"].strftime("%Y-%m-%d")
+            if item["most_recent"] != datetime.min.replace(tzinfo=timezone.utc)
+            else "unknown"
+        )
         meta = f"{date}  {item['session_count']} sessions  {item['total_msgs']} msgs"
         available = width - len(meta) - 3
         name = truncate(short, max(available, 20))
@@ -1229,6 +1309,7 @@ def launch_session(session):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def cmd_sessions(args):
     """List and resume Claude Code sessions."""
@@ -1312,8 +1393,7 @@ def build_rotation_list(results):
                 file_date = "unknown"
             for name, _match_text, _line_num, *_rest in matches:
                 if name not in entries:
-                    entries[name] = {"name": name, "count": 0,
-                                     "earliest": file_date, "latest": file_date}
+                    entries[name] = {"name": name, "count": 0, "earliest": file_date, "latest": file_date}
                 entries[name]["count"] += 1
                 if file_date != "unknown":
                     if entries[name]["earliest"] == "unknown" or file_date < entries[name]["earliest"]:
@@ -1467,7 +1547,9 @@ def format_stats(stats):
     lines = ["📊 Claude Code Stats", ""]
     total_msgs = stats["total_user_messages"] + stats["total_assistant_messages"]
     lines.append(f"  Sessions:      {stats['total_sessions']:,} across {stats['total_projects']} projects")
-    lines.append(f"  Messages:      {total_msgs:,} (you: {stats['total_user_messages']:,} / claude: {stats['total_assistant_messages']:,})")
+    user = stats["total_user_messages"]
+    assistant = stats["total_assistant_messages"]
+    lines.append(f"  Messages:      {total_msgs:,} (you: {user:,} / claude: {assistant:,})")
     if stats["first_session_date"]:
         dt = datetime.strptime(stats["first_session_date"], "%Y-%m-%d")
         days_ago = (datetime.now() - dt).days
@@ -1475,9 +1557,14 @@ def format_stats(stats):
     lines.append(f"  Data on disk:  {format_bytes(stats['disk_usage_bytes'])}")
     if stats["most_active_project"]:
         proj = shorten_project(stats["most_active_project"])
-        lines.append(f"  Most active:   {proj} ({stats['most_active_project_sessions']} sessions, {stats['most_active_project_messages']:,} msgs)")
+        sessions = stats["most_active_project_sessions"]
+        msgs = stats["most_active_project_messages"]
+        lines.append(f"  Most active:   {proj} ({sessions} sessions, {msgs:,} msgs)")
     if stats["biggest_file_name"]:
-        lines.append(f"  Biggest file:  {stats['biggest_file_name']} ({stats['biggest_file_messages']:,} msgs, {format_bytes(stats['biggest_file_size'])})")
+        bf_name = stats["biggest_file_name"]
+        bf_msgs = stats["biggest_file_messages"]
+        bf_size = format_bytes(stats["biggest_file_size"])
+        lines.append(f"  Biggest file:  {bf_name} ({bf_msgs:,} msgs, {bf_size})")
     return "\n".join(lines)
 
 
@@ -1545,7 +1632,8 @@ def cmd_scan(args):
                 secret_count = sum(len(m) for m in file_results.values())
                 file_noun = "file" if scanned == 1 else "files"
                 noun = "match" if secret_count == 1 else "matches"
-                print(f"[{global_done}/{global_total}] {label + ':':<16}{scanned} {file_noun} scanned, {secret_count} {noun} found")
+                progress = f"[{global_done}/{global_total}] {label + ':':<16}"
+                print(f"{progress}{scanned} {file_noun} scanned, {secret_count} {noun} found")
             print_scan_totals(cached_results, cached_summary)
             print_verbose_detail(cached_results)
             offer_rotation_list(cached_results, force=args.rotation_list)
@@ -1627,12 +1715,12 @@ def cmd_scrub(args):
 
     claude_running = is_claude_code_running()
     if claude_running:
-        print(f"\n🚨 Claude Code is currently running!")
-        print(f"   Scrubbing rewrites session files in-place and WILL corrupt")
-        print(f"   any active session. Close Claude Code first.")
+        print("\n🚨 Claude Code is currently running!")
+        print("   Scrubbing rewrites session files in-place and WILL corrupt")
+        print("   any active session. Close Claude Code first.")
     else:
-        print(f"\n⚠️  Scrubbing rewrites session files in-place.")
-        print(f"   Do not scrub while Claude Code is running — it may corrupt active sessions.")
+        print("\n⚠️  Scrubbing rewrites session files in-place.")
+        print("   Do not scrub while Claude Code is running — it may corrupt active sessions.")
 
     if not args.yes:
         answer = input(f"\nScrub {total} secrets? This cannot be undone. [y/N] ")
