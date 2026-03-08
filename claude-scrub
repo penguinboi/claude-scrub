@@ -295,7 +295,10 @@ def is_claude_code_running():
 
 
 def secure_delete(path):
-    """Overwrite file contents with zeros before unlinking."""
+    """Overwrite file contents with zeros before unlinking.
+
+    Returns True on success, False on failure (logs warning to stderr).
+    """
     try:
         size = path.stat().st_size
         with open(path, "wb") as f:
@@ -303,8 +306,10 @@ def secure_delete(path):
             f.flush()
             os.fsync(f.fileno())
         path.unlink()
-    except OSError:
-        pass
+        return True
+    except OSError as e:
+        print(f"Warning: secure delete failed for {path}: {e}", file=sys.stderr)
+        return False
 
 
 def parse_simple_toml(text):

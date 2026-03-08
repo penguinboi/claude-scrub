@@ -1455,6 +1455,65 @@ class TestFormatStats(unittest.TestCase):
         # Should not crash
 
 
+# ---------------------------------------------------------------------------
+# Secure delete
+# ---------------------------------------------------------------------------
+
+
+class TestSecureDelete(unittest.TestCase):
+    """Tests for secure_delete() which overwrites files before unlinking."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_secure_delete_removes_file(self):
+        f = self.tmpdir / "secret.txt"
+        f.write_text("my secret key")
+        result = cs.secure_delete(f)
+        self.assertTrue(result)
+        self.assertFalse(f.exists())
+
+    def test_secure_delete_overwrites_before_unlinking(self):
+        f = self.tmpdir / "secret.txt"
+        f.write_text("my secret key")
+        original_size = f.stat().st_size
+        import unittest.mock
+
+        with unittest.mock.patch.object(Path, "unlink") as mock_unlink:
+            cs.secure_delete(f)
+            self.assertEqual(f.read_bytes(), b"\x00" * original_size)
+            mock_unlink.assert_called_once()
+
+    def test_secure_delete_returns_false_on_missing_file(self):
+        f = self.tmpdir / "nonexistent.txt"
+        result = cs.secure_delete(f)
+        self.assertIs(result, False)
+
+    def test_secure_delete_returns_false_on_permission_error(self):
+        f = self.tmpdir / "readonly.txt"
+        f.write_text("secret")
+        f.chmod(0o000)
+        result = cs.secure_delete(f)
+        self.assertIs(result, False)
+        f.chmod(0o644)
+
+    def test_secure_delete_warns_on_failure(self):
+        """Failed secure delete should print a warning to stderr."""
+        import io
+        from contextlib import redirect_stderr
+
+        f = self.tmpdir / "nonexistent.txt"
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            cs.secure_delete(f)
+        output = buf.getvalue()
+        self.assertIn("Warning", output)
+        self.assertIn("secure delete failed", output)
+
+
 class TestStatsSubcommand(unittest.TestCase):
     """Tests for stats argparse integration."""
 
