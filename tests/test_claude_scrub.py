@@ -1847,3 +1847,23 @@ class TestRegexSafety(unittest.TestCase):
             self.assertNotIn("Bad Rule", names)
         finally:
             shutil.rmtree(tmpdir)
+
+
+class TestMainExceptionHandler(unittest.TestCase):
+    """Verify main() catches unexpected exceptions gracefully."""
+
+    def test_main_catches_unexpected_exception(self):
+        """main() should print a clean error, not a raw traceback."""
+        import io
+        import unittest.mock
+        from contextlib import redirect_stderr
+
+        buf = io.StringIO()
+        with unittest.mock.patch.object(cs, "parse_args", side_effect=RuntimeError("boom")):
+            with redirect_stderr(buf):
+                with self.assertRaises(SystemExit) as ctx:
+                    cs.main()
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("boom", buf.getvalue())
+        # Should NOT contain raw traceback lines
+        self.assertNotIn("Traceback", buf.getvalue())

@@ -1850,15 +1850,21 @@ def cmd_scrub(args):
 
 
 def main():
-    args = parse_args()
-    if args.command == "sessions":
-        cmd_sessions(args)
-    elif args.command == "scan":
-        cmd_scan(args)
-    elif args.command == "scrub":
-        cmd_scrub(args)
-    elif args.command == "stats":
-        cmd_stats(args)
+    try:
+        args = parse_args()
+        if args.command == "sessions":
+            cmd_sessions(args)
+        elif args.command == "scan":
+            cmd_scan(args)
+        elif args.command == "scrub":
+            cmd_scrub(args)
+        elif args.command == "stats":
+            cmd_stats(args)
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
