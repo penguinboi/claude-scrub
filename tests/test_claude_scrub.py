@@ -1701,3 +1701,45 @@ class TestExtractSession(unittest.TestCase):
         f = self.tmpdir / "nonexistent.jsonl"
         meta = cs.extract_session_from_jsonl(f)
         self.assertEqual(meta["messageCount"], 0)
+
+
+class TestSymlinkProtection(unittest.TestCase):
+    """Verify symlinks are skipped to prevent path traversal attacks."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp())
+        self.claude_dir = self.tmpdir / ".claude"
+        self.no_ccrider = self.tmpdir / "nonexistent" / "sessions.db"
+        proj = self.claude_dir / "projects" / "-Users-test-Code-myapp"
+        proj.mkdir(parents=True)
+        # Real file with a secret
+        self.real_file = proj / "real.jsonl"
+        self.real_file.write_text('{"message":"AKIAIOSFODNN7EXAMPLE"}\n')
+        # Symlink to a sensitive file (contains a secret so scrub would try to modify it)
+        self.sensitive = self.tmpdir / "sensitive.txt"
+        self.sensitive.write_text('{"message":"AKIAIOSFODNN7EXAMPLE"}\n')
+        self.symlink = proj / "evil.jsonl"
+        self.symlink.symlink_to(self.sensitive)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_discover_targets_skips_symlinks(self):
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        all_files = []
+        for files in targets.values():
+            all_files.extend(files)
+        # Real file should be included
+        self.assertIn(self.real_file, all_files)
+        # Symlink should NOT be included
+        self.assertNotIn(self.symlink, all_files)
+
+    def test_scrub_skips_symlinks(self):
+        patterns = cs.get_builtin_patterns()
+        # Force symlink into targets (bypass discover protection)
+        targets = {"sessions": [self.symlink, self.real_file]}
+        stats = cs.scrub_targets(targets, patterns)
+        # Only the real file should be scrubbed (1 file), not the symlink
+        self.assertEqual(stats["total_files"], 1)
+        # Sensitive file should be untouched — content must not be redacted
+        self.assertEqual(self.sensitive.read_text(), '{"message":"AKIAIOSFODNN7EXAMPLE"}\n')
