@@ -395,6 +395,27 @@ def luhn_check(number_str):
     return checksum % 10 == 0
 
 
+MAX_PATTERN_LENGTH = 500
+
+
+def is_safe_regex(regex_str, name=""):
+    """Reject regex patterns that risk catastrophic backtracking (ReDoS).
+
+    Returns True if the pattern is safe to compile, False otherwise.
+    Prints a warning to stderr when rejecting a pattern.
+    """
+    if len(regex_str) > MAX_PATTERN_LENGTH:
+        print(f"Warning: pattern '{name}' too long ({len(regex_str)} chars), skipping", file=sys.stderr)
+        return False
+
+    # Nested quantifiers: (x+)+, (x*)+, (x+)*, (x*)* etc.
+    if re.search(r"\([^)]*[+*][^)]*\)[+*]", regex_str):
+        print(f"Warning: pattern '{name}' has nested quantifiers (ReDoS risk), skipping", file=sys.stderr)
+        return False
+
+    return True
+
+
 def load_custom_patterns(config_path):
     """Load user-defined secret patterns from a TOML config file."""
     if not config_path.is_file():
@@ -409,6 +430,8 @@ def load_custom_patterns(config_path):
         name = entry.get("name", "")
         regex_str = entry.get("regex", "")
         if not name or not regex_str:
+            continue
+        if not is_safe_regex(regex_str, name):
             continue
         try:
             compiled = re.compile(make_json_safe_regex(regex_str))
@@ -435,6 +458,8 @@ def load_patterns_db(toml_path):
         name = rule.get("description", rule.get("id", "unknown"))
         regex_str = rule.get("regex", "")
         if not regex_str:
+            continue
+        if not is_safe_regex(regex_str, name):
             continue
         try:
             compiled = re.compile(make_json_safe_regex(regex_str))

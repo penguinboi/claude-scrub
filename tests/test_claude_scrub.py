@@ -1743,3 +1743,74 @@ class TestSymlinkProtection(unittest.TestCase):
         self.assertEqual(stats["total_files"], 1)
         # Sensitive file should be untouched — content must not be redacted
         self.assertEqual(self.sensitive.read_text(), '{"message":"AKIAIOSFODNN7EXAMPLE"}\n')
+
+
+class TestRegexSafety(unittest.TestCase):
+    """Verify ReDoS-prone patterns are rejected."""
+
+    def test_rejects_nested_quantifiers(self):
+        """Patterns with nested quantifiers like (a+)+ should be rejected."""
+        import io
+        from contextlib import redirect_stderr
+
+        tmpdir = Path(tempfile.mkdtemp())
+        try:
+            config_file = tmpdir / "config.toml"
+            config_file.write_text('[[patterns]]\nname = "redos"\nregex = "(a+)+b"\n')
+            buf = io.StringIO()
+            with redirect_stderr(buf):
+                patterns = cs.load_custom_patterns(config_file)
+            # The ReDoS pattern should have been rejected
+            names = [p["name"] for p in patterns]
+            self.assertNotIn("redos", names)
+            self.assertIn("nested quantifier", buf.getvalue().lower())
+        finally:
+            shutil.rmtree(tmpdir)
+
+    def test_rejects_overly_long_patterns(self):
+        """Patterns longer than 500 chars should be rejected."""
+        import io
+        from contextlib import redirect_stderr
+
+        tmpdir = Path(tempfile.mkdtemp())
+        try:
+            config_file = tmpdir / "config.toml"
+            long_regex = "a" * 501
+            config_file.write_text(f'[[patterns]]\nname = "toolong"\nregex = "{long_regex}"\n')
+            buf = io.StringIO()
+            with redirect_stderr(buf):
+                patterns = cs.load_custom_patterns(config_file)
+            names = [p["name"] for p in patterns]
+            self.assertNotIn("toolong", names)
+            self.assertIn("too long", buf.getvalue().lower())
+        finally:
+            shutil.rmtree(tmpdir)
+
+    def test_accepts_safe_patterns(self):
+        """Normal patterns should still be accepted."""
+        tmpdir = Path(tempfile.mkdtemp())
+        try:
+            config_file = tmpdir / "config.toml"
+            config_file.write_text('[[patterns]]\nname = "safe"\nregex = "SAFE_[A-Za-z0-9]{20,}"\n')
+            patterns = cs.load_custom_patterns(config_file)
+            names = [p["name"] for p in patterns]
+            self.assertIn("safe", names)
+        finally:
+            shutil.rmtree(tmpdir)
+
+    def test_patterns_db_rejects_redos(self):
+        """load_patterns_db should also reject ReDoS-prone patterns."""
+        import io
+        from contextlib import redirect_stderr
+
+        tmpdir = Path(tempfile.mkdtemp())
+        try:
+            toml_file = tmpdir / "gitleaks.toml"
+            toml_file.write_text('[[rules]]\nid = "redos-rule"\ndescription = "Bad Rule"\nregex = "(x+)+y"\n')
+            buf = io.StringIO()
+            with redirect_stderr(buf):
+                patterns = cs.load_patterns_db(toml_file)
+            names = [p["name"] for p in patterns]
+            self.assertNotIn("Bad Rule", names)
+        finally:
+            shutil.rmtree(tmpdir)
