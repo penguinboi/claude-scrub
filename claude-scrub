@@ -400,6 +400,7 @@ CATEGORY_LABELS = {
     "history": "History",
     "paste_cache": "Paste cache",
     "file_history": "File history",
+    "memory": "Memory files",
     "ccrider": "ccrider DB",
 }
 
@@ -412,6 +413,7 @@ def discover_targets(claude_dir, ccrider_db=None):
         "history": [],
         "paste_cache": [],
         "file_history": [],
+        "memory": [],
         "ccrider": [],
     }
 
@@ -425,6 +427,11 @@ def discover_targets(claude_dir, ccrider_db=None):
                     targets["sessions"].append(f)
                 elif f.name == "sessions-index.json" and f.is_file():
                     targets["indexes"].append(f)
+            mem_dir = project_dir / "memory"
+            if mem_dir.is_dir():
+                for f in mem_dir.iterdir():
+                    if f.is_file():
+                        targets["memory"].append(f)
 
     history = claude_dir / "history.jsonl"
     if history.is_file():
@@ -450,7 +457,7 @@ def discover_targets(claude_dir, ccrider_db=None):
     return targets
 
 
-CATEGORY_ORDER = ("sessions", "indexes", "history", "paste_cache", "file_history", "ccrider")
+CATEGORY_ORDER = ("sessions", "indexes", "history", "paste_cache", "file_history", "memory", "ccrider")
 
 
 def scan_targets(targets, patterns, show_progress=False):
@@ -563,7 +570,7 @@ def load_scan_cache():
 def filter_scrub_targets(targets, include=""):
     """Filter targets for scrub: sessions/indexes/history always included.
 
-    Optional categories (paste-cache, file-history, ccrider) are only
+    Optional categories (paste-cache, file-history, memory, ccrider) are only
     included when named in the comma-separated include string.
     """
     included = set(s.strip() for s in include.split(",") if s.strip())
@@ -573,6 +580,7 @@ def filter_scrub_targets(targets, include=""):
         "history": targets.get("history", []),
         "paste_cache": targets["paste_cache"] if "paste-cache" in included else [],
         "file_history": targets["file_history"] if "file-history" in included else [],
+        "memory": targets["memory"] if "memory" in included else [],
         "ccrider": targets["ccrider"] if "ccrider" in included else [],
     }
 
@@ -615,7 +623,7 @@ def format_scan_report(results, verbose=False, targets=None):
     total_files_scanned = 0
     total_secrets = 0
 
-    for category in ("sessions", "indexes", "history", "paste_cache", "file_history", "ccrider"):
+    for category in CATEGORY_ORDER:
         if category not in results:
             continue
         file_results = results[category]

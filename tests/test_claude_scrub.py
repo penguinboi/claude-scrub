@@ -156,6 +156,10 @@ class TestFileDiscovery(unittest.TestCase):
         fh.mkdir()
         (fh / "snapshot1.txt").write_text("some code")
 
+        mem = proj / "memory"
+        mem.mkdir()
+        (mem / "MEMORY.md").write_text("# Memory\nSome notes")
+
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
 
@@ -186,6 +190,15 @@ class TestFileDiscovery(unittest.TestCase):
     def test_discover_finds_file_history(self):
         targets = cs.discover_targets(self.claude_dir)
         self.assertEqual(len(targets["file_history"]), 1)
+
+    def test_discover_finds_memory_files(self):
+        targets = cs.discover_targets(self.claude_dir)
+        self.assertEqual(len(targets["memory"]), 1)
+        self.assertTrue(targets["memory"][0].name == "MEMORY.md")
+
+    def test_discover_returns_memory_category(self):
+        targets = cs.discover_targets(self.claude_dir)
+        self.assertIn("memory", targets)
 
     def test_discover_handles_missing_dirs(self):
         empty = Path(self.tmpdir) / "empty-claude"
@@ -245,6 +258,27 @@ class TestScanCommand(unittest.TestCase):
         results = cs.scan_targets(targets, patterns)
         total = sum(len(m) for m in results["history"].values())
         self.assertGreaterEqual(total, 1)
+
+    def test_scan_finds_secrets_in_memory_files(self):
+        mem_dir = self.claude_dir / "projects" / "-Users-test-Code-myapp" / "memory"
+        mem_dir.mkdir(exist_ok=True)
+        (mem_dir / "MEMORY.md").write_text("api_key = AKIAIOSFODNN7EXAMPLE\n")
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results = cs.scan_targets(targets, patterns)
+        self.assertIn("memory", results)
+        total = sum(len(m) for m in results["memory"].values())
+        self.assertGreaterEqual(total, 1)
+
+    def test_scan_report_shows_memory_category(self):
+        mem_dir = self.claude_dir / "projects" / "-Users-test-Code-myapp" / "memory"
+        mem_dir.mkdir(exist_ok=True)
+        (mem_dir / "MEMORY.md").write_text("api_key = AKIAIOSFODNN7EXAMPLE\n")
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results = cs.scan_targets(targets, patterns)
+        output = cs.format_scan_report(results, verbose=False, targets=targets)
+        self.assertIn("Memory", output)
 
     def test_scan_clean_files_have_no_matches(self):
         patterns = cs.get_builtin_patterns()
@@ -432,6 +466,22 @@ class TestScrubCommand(unittest.TestCase):
         stats = cs.scrub_targets(targets, patterns)
         self.assertGreater(stats["total_secrets"], 0)
         self.assertGreater(stats["total_files"], 0)
+
+    def test_filter_excludes_memory_by_default(self):
+        mem_dir = self.claude_dir / "projects" / "-Users-test-Code-myapp" / "memory"
+        mem_dir.mkdir(exist_ok=True)
+        (mem_dir / "MEMORY.md").write_text("api_key = AKIAIOSFODNN7EXAMPLE")
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        filtered = cs.filter_scrub_targets(targets, include="")
+        self.assertEqual(len(filtered["memory"]), 0)
+
+    def test_filter_includes_memory_when_requested(self):
+        mem_dir = self.claude_dir / "projects" / "-Users-test-Code-myapp" / "memory"
+        mem_dir.mkdir(exist_ok=True)
+        (mem_dir / "MEMORY.md").write_text("api_key = AKIAIOSFODNN7EXAMPLE")
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        filtered = cs.filter_scrub_targets(targets, include="memory")
+        self.assertEqual(len(filtered["memory"]), 1)
 
     def test_scrub_respects_include_filter(self):
         paste_dir = self.claude_dir / "paste-cache"
