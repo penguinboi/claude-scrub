@@ -1599,6 +1599,11 @@ class TestStatsSubcommand(unittest.TestCase):
         args = cs.parse_args(["stats"])
         self.assertEqual(args.command, "stats")
 
+    def test_version_flag(self):
+        with self.assertRaises(SystemExit) as ctx:
+            cs.parse_args(["--version"])
+        self.assertEqual(ctx.exception.code, 0)
+
 
 class TestUtilities(unittest.TestCase):
     def test_format_bytes_bytes(self):
