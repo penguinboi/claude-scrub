@@ -535,6 +535,17 @@ class TestScrubCommand(unittest.TestCase):
             # os.replace should have been called for files that had secrets
             self.assertGreater(mock_replace.call_count, 0)
 
+    def test_scrub_skips_unreadable_files(self):
+        """scrub_targets should skip files it can't read without crashing."""
+        patterns = cs.get_builtin_patterns()
+        unreadable = self.claude_dir / "projects" / "-Users-test-Code-myapp" / "unreadable.jsonl"
+        unreadable.write_text('{"message":"AKIAIOSFODNN7EXAMPLE"}')
+        unreadable.chmod(0o000)
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        stats = cs.scrub_targets(targets, patterns)
+        self.assertIsInstance(stats, dict)
+        unreadable.chmod(0o644)
+
 
 class TestCustomPatterns(unittest.TestCase):
     def setUp(self):
@@ -654,6 +665,13 @@ class TestEntropy(unittest.TestCase):
 
     def test_placeholder_low_entropy(self):
         self.assertLess(cs.entropy("placeholder123"), 3.6)
+
+    def test_entropy_at_exact_threshold(self):
+        """Verify ENTROPY_THRESHOLD value and behavior below threshold."""
+        threshold = cs.ENTROPY_THRESHOLD
+        self.assertEqual(threshold, 3.8)
+        val = "aAbBcCdD"  # 3.0 bits — below threshold
+        self.assertLess(cs.entropy(val), threshold)
 
 
 class TestLuhnCheck(unittest.TestCase):
@@ -1570,3 +1588,116 @@ class TestStatsSubcommand(unittest.TestCase):
     def test_stats_subcommand_parses(self):
         args = cs.parse_args(["stats"])
         self.assertEqual(args.command, "stats")
+
+
+class TestUtilities(unittest.TestCase):
+    def test_format_bytes_bytes(self):
+        self.assertEqual(cs.format_bytes(500), "500 B")
+
+    def test_format_bytes_kilobytes(self):
+        self.assertIn("KB", cs.format_bytes(1500))
+
+    def test_format_bytes_megabytes(self):
+        self.assertIn("MB", cs.format_bytes(2_000_000))
+
+    def test_format_bytes_gigabytes(self):
+        self.assertIn("GB", cs.format_bytes(3_000_000_000))
+
+    def test_truncate_short_string(self):
+        self.assertEqual(cs.truncate("hello", 10), "hello")
+
+    def test_truncate_long_string(self):
+        result = cs.truncate("a" * 100, 20)
+        self.assertTrue(len(result) <= 20)
+        self.assertTrue(result.endswith("\u2026"))
+
+    def test_shorten_project_path(self):
+        home = str(Path.home())
+        long_path = home + "/.claude/projects/-Users-test-Code-myapp/abc.jsonl"
+        result = cs.shorten_project(long_path)
+        self.assertTrue(result.startswith("~"))
+        self.assertTrue(len(result) < len(long_path))
+
+    def test_project_path_from_dir_name(self):
+        result = cs.project_path_from_dir_name("-Users-test-Code-myapp")
+        self.assertIn("/", result)
+
+
+class TestScanCache(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp())
+        self.claude_dir = self.tmpdir / ".claude"
+        self.no_ccrider = self.tmpdir / "nonexistent" / "sessions.db"
+        proj = self.claude_dir / "projects" / "-Users-test-Code-myapp"
+        proj.mkdir(parents=True)
+        self.secret_file = proj / "abc123.jsonl"
+        self.secret_file.write_text('{"message":"AKIAIOSFODNN7EXAMPLE"}\n')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_save_and_load_cache_round_trip(self):
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results = cs.scan_targets(targets, patterns)
+        cache_file = self.tmpdir / "test-cache.json"
+        original_cache = cs.SCAN_CACHE_FILE
+        cs.SCAN_CACHE_FILE = cache_file
+        try:
+            cs.save_scan_cache(results, targets)
+            self.assertTrue(cache_file.exists())
+            loaded_results, loaded_summary = cs.load_scan_cache()
+            self.assertIsNotNone(loaded_results)
+            self.assertEqual(set(loaded_results.keys()), set(results.keys()))
+        finally:
+            cs.SCAN_CACHE_FILE = original_cache
+
+    def test_load_cache_returns_none_when_missing(self):
+        cache_file = self.tmpdir / "nonexistent-cache.json"
+        original_cache = cs.SCAN_CACHE_FILE
+        cs.SCAN_CACHE_FILE = cache_file
+        try:
+            loaded_results, loaded_summary = cs.load_scan_cache()
+            self.assertIsNone(loaded_results)
+        finally:
+            cs.SCAN_CACHE_FILE = original_cache
+
+
+class TestExtractSession(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_extracts_metadata_from_jsonl(self):
+        f = self.tmpdir / "abc123.jsonl"
+        f.write_text(
+            '{"type":"user","timestamp":"2026-03-01T10:00:00Z",'
+            '"cwd":"/home/test","message":{"content":"hello world"}}\n'
+            '{"type":"assistant","timestamp":"2026-03-01T10:01:00Z"}\n'
+        )
+        meta = cs.extract_session_from_jsonl(f)
+        self.assertEqual(meta["sessionId"], "abc123")
+        self.assertEqual(meta["project"], "/home/test")
+        self.assertEqual(meta["messageCount"], 1)
+        self.assertEqual(meta["created"], "2026-03-01T10:00:00Z")
+        self.assertEqual(meta["firstPrompt"], "hello world")
+
+    def test_handles_empty_file(self):
+        f = self.tmpdir / "empty.jsonl"
+        f.write_text("")
+        meta = cs.extract_session_from_jsonl(f)
+        self.assertEqual(meta["messageCount"], 0)
+        self.assertEqual(meta["firstPrompt"], "")
+
+    def test_handles_corrupt_json_lines(self):
+        f = self.tmpdir / "corrupt.jsonl"
+        f.write_text('not json\n{"type":"user","message":{"content":"valid"}}\n')
+        meta = cs.extract_session_from_jsonl(f)
+        self.assertEqual(meta["messageCount"], 1)
+
+    def test_handles_missing_file(self):
+        f = self.tmpdir / "nonexistent.jsonl"
+        meta = cs.extract_session_from_jsonl(f)
+        self.assertEqual(meta["messageCount"], 0)
