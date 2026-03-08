@@ -1351,8 +1351,10 @@ def launch_session(session):
     project_dir = session.get("project", "")
     session_id = session["sessionId"]
 
-    if project_dir and os.path.isdir(project_dir):
-        os.chdir(project_dir)
+    if project_dir:
+        resolved = Path(project_dir).resolve()
+        if resolved.is_dir() and not resolved.is_symlink():
+            os.chdir(resolved)
 
     print(f"Resuming session in {shorten_project(project_dir)}...")
     print(f"  claude --resume {session_id}")
