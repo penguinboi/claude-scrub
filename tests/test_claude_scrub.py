@@ -63,6 +63,16 @@ def test_sessions_days_flag():
     assert args.days == 7
 
 
+def test_scan_rotation_list_flag():
+    args = cs.parse_args(["scan", "--rotation-list"])
+    assert args.rotation_list is True
+
+
+def test_scrub_rotation_list_flag():
+    args = cs.parse_args(["scrub", "--rotation-list"])
+    assert args.rotation_list is True
+
+
 def test_no_subcommand_shows_help():
     with pytest.raises(SystemExit):
         cs.parse_args([])
@@ -1026,6 +1036,133 @@ class TestScanTierOutput(unittest.TestCase):
         output = buf.getvalue()
         self.assertNotIn("[specific]", output.lower())
         self.assertNotIn("[generic]", output.lower())
+
+
+# ---------------------------------------------------------------------------
+# Rotation list
+# ---------------------------------------------------------------------------
+
+class TestRotationList(unittest.TestCase):
+    """Tests for build_rotation_list() which summarizes secrets for rotation."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp())
+        self.claude_dir = self.tmpdir / ".claude"
+        proj = self.claude_dir / "projects" / "-Users-test-Code-myapp"
+        proj.mkdir(parents=True)
+        self.session_file = proj / "abc123.jsonl"
+        self.session_file.write_text(
+            '{"message":"my key is AKIAIOSFODNN7EXAMPLE"}\n'
+        )
+        self.history_file = self.claude_dir / "history.jsonl"
+        self.history_file.write_text(
+            '{"prompt":"ghp_ABCDEFghijklmnopqrst1234567890ab"}\n'
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_returns_list_of_dicts(self):
+        results = {
+            "sessions": {self.session_file: [
+                ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 1, "specific"),
+            ]},
+            "history": {}, "indexes": {}, "paste_cache": {},
+            "file_history": {}, "memory": {}, "ccrider": {},
+        }
+        rotation = cs.build_rotation_list(results)
+        self.assertIsInstance(rotation, list)
+        self.assertTrue(all(isinstance(r, dict) for r in rotation))
+
+    def test_contains_pattern_name_and_count(self):
+        results = {
+            "sessions": {self.session_file: [
+                ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 1, "specific"),
+                ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 5, "specific"),
+            ]},
+            "history": {}, "indexes": {}, "paste_cache": {},
+            "file_history": {}, "memory": {}, "ccrider": {},
+        }
+        rotation = cs.build_rotation_list(results)
+        aws_entry = [r for r in rotation if r["name"] == "AWS Access Key"]
+        self.assertEqual(len(aws_entry), 1)
+        self.assertEqual(aws_entry[0]["count"], 2)
+
+    def test_includes_earliest_and_latest_dates(self):
+        results = {
+            "sessions": {self.session_file: [
+                ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 1, "specific"),
+            ]},
+            "history": {self.history_file: [
+                ("GitHub Token", "ghp_ABCDEFghijklmnopqrst1234567890ab", 1, "specific"),
+            ]},
+            "indexes": {}, "paste_cache": {},
+            "file_history": {}, "memory": {}, "ccrider": {},
+        }
+        rotation = cs.build_rotation_list(results)
+        for entry in rotation:
+            self.assertIn("earliest", entry)
+            self.assertIn("latest", entry)
+            # Dates should be ISO-ish strings (YYYY-MM-DD)
+            self.assertRegex(entry["earliest"], r"\d{4}-\d{2}-\d{2}")
+            self.assertRegex(entry["latest"], r"\d{4}-\d{2}-\d{2}")
+
+    def test_multiple_secret_types(self):
+        results = {
+            "sessions": {self.session_file: [
+                ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 1, "specific"),
+                ("Stripe Key", "sk_live_abc123", 2, "specific"),
+            ]},
+            "history": {}, "indexes": {}, "paste_cache": {},
+            "file_history": {}, "memory": {}, "ccrider": {},
+        }
+        rotation = cs.build_rotation_list(results)
+        names = {r["name"] for r in rotation}
+        self.assertEqual(names, {"AWS Access Key", "Stripe Key"})
+
+    def test_empty_results_returns_empty_list(self):
+        results = {
+            "sessions": {}, "history": {}, "indexes": {},
+            "paste_cache": {}, "file_history": {}, "memory": {}, "ccrider": {},
+        }
+        rotation = cs.build_rotation_list(results)
+        self.assertEqual(rotation, [])
+
+    def test_sorted_by_count_descending(self):
+        results = {
+            "sessions": {self.session_file: [
+                ("Stripe Key", "sk_live_abc", 1, "specific"),
+                ("AWS Access Key", "AKIA...", 2, "specific"),
+                ("AWS Access Key", "AKIA...", 3, "specific"),
+                ("AWS Access Key", "AKIA...", 5, "specific"),
+            ]},
+            "history": {}, "indexes": {}, "paste_cache": {},
+            "file_history": {}, "memory": {}, "ccrider": {},
+        }
+        rotation = cs.build_rotation_list(results)
+        self.assertEqual(rotation[0]["name"], "AWS Access Key")
+        self.assertEqual(rotation[1]["name"], "Stripe Key")
+
+
+class TestFormatRotationList(unittest.TestCase):
+    """Tests for format_rotation_list() text output."""
+
+    def test_formats_readable_output(self):
+        rotation = [
+            {"name": "AWS Access Key", "count": 3,
+             "earliest": "2026-03-01", "latest": "2026-03-08"},
+            {"name": "GitHub Token", "count": 1,
+             "earliest": "2026-03-05", "latest": "2026-03-05"},
+        ]
+        output = cs.format_rotation_list(rotation)
+        self.assertIn("AWS Access Key", output)
+        self.assertIn("GitHub Token", output)
+        self.assertIn("2026-03-01", output)
+        self.assertIn("2026-03-08", output)
+
+    def test_empty_list_returns_no_action_message(self):
+        output = cs.format_rotation_list([])
+        self.assertIn("no credentials", output.lower())
 
 
 # ---------------------------------------------------------------------------

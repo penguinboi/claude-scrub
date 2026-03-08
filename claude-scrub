@@ -917,6 +917,8 @@ def parse_args(argv=None):
                              help="Show detailed output")
     scan_parser.add_argument("--patterns-db", action="store_true",
                              help="Use patterns-db for additional patterns")
+    scan_parser.add_argument("--rotation-list", action="store_true",
+                             help="Print a checklist of credentials to rotate")
 
     # --- scrub subcommand ---
     scrub_parser = subparsers.add_parser("scrub", help="Remove secrets from sessions")
@@ -932,6 +934,8 @@ def parse_args(argv=None):
                               help="Show what would be scrubbed without modifying files")
     scrub_parser.add_argument("--aggressive", action="store_true",
                               help="Also scrub generic pattern matches (may degrade session context)")
+    scrub_parser.add_argument("--rotation-list", action="store_true",
+                              help="Print a checklist of credentials to rotate")
 
     # --- stats subcommand ---
     subparsers.add_parser("stats", help="Show Claude Code usage statistics")
@@ -1287,6 +1291,50 @@ def print_verbose_detail(results):
                     print(f"    Line {line_num}: {name}{tier_tag} ({preview})")
 
 
+def build_rotation_list(results):
+    """Build a rotation checklist from scan results.
+
+    Groups matches by pattern name with occurrence count and date range
+    (derived from file modification times). Returns a list of dicts sorted
+    by count descending.
+    """
+    entries = {}  # name -> {"count": int, "earliest": date, "latest": date}
+    for cat_results in results.values():
+        for filepath, matches in cat_results.items():
+            if not matches:
+                continue
+            try:
+                mtime = datetime.fromtimestamp(filepath.stat().st_mtime, tz=timezone.utc)
+                file_date = mtime.strftime("%Y-%m-%d")
+            except OSError:
+                file_date = "unknown"
+            for name, _match_text, _line_num, *_rest in matches:
+                if name not in entries:
+                    entries[name] = {"name": name, "count": 0,
+                                     "earliest": file_date, "latest": file_date}
+                entries[name]["count"] += 1
+                if file_date != "unknown":
+                    if entries[name]["earliest"] == "unknown" or file_date < entries[name]["earliest"]:
+                        entries[name]["earliest"] = file_date
+                    if entries[name]["latest"] == "unknown" or file_date > entries[name]["latest"]:
+                        entries[name]["latest"] = file_date
+    return sorted(entries.values(), key=lambda e: -e["count"])
+
+
+def format_rotation_list(rotation):
+    """Format a rotation checklist as human-readable text."""
+    if not rotation:
+        return "No credentials found — nothing to rotate."
+    lines = ["Credentials to rotate:", ""]
+    for entry in rotation:
+        date_range = entry["earliest"]
+        if entry["latest"] != entry["earliest"]:
+            date_range += f" – {entry['latest']}"
+        noun = "occurrence" if entry["count"] == 1 else "occurrences"
+        lines.append(f"  • {entry['name']}: {entry['count']} {noun} ({date_range})")
+    return "\n".join(lines)
+
+
 def gather_stats(claude_dir):
     """Mine session JSONL files for usage statistics."""
     projects_dir = claude_dir / "projects"
@@ -1415,6 +1463,27 @@ def cmd_stats(args):
     print(format_stats(stats))
 
 
+def offer_rotation_list(results, force=False):
+    """Print a rotation checklist, optionally prompting first.
+
+    When force=True (--rotation-list flag), prints without asking.
+    Otherwise prompts on interactive terminals when secrets are found.
+    """
+    rotation = build_rotation_list(results)
+    if not rotation:
+        return
+    if force:
+        print(f"\n{format_rotation_list(rotation)}")
+        return
+    if sys.stdout.isatty():
+        try:
+            answer = input("\nShow rotation checklist? [y/N] ")
+        except (EOFError, KeyboardInterrupt):
+            return
+        if answer.lower() == "y":
+            print(f"\n{format_rotation_list(rotation)}")
+
+
 def cmd_scan(args):
     """Scan sessions for secrets."""
     # If verbose and we have a fresh cache, use it instead of rescanning
@@ -1436,6 +1505,7 @@ def cmd_scan(args):
                 print(f"[{global_done}/{global_total}] {label + ':':<16}{scanned} {file_noun} scanned, {secret_count} {noun} found")
             print_scan_totals(cached_results, cached_summary)
             print_verbose_detail(cached_results)
+            offer_rotation_list(cached_results, force=args.rotation_list)
             return
 
     patterns = load_all_patterns(use_patterns_db=args.patterns_db)
@@ -1448,6 +1518,7 @@ def cmd_scan(args):
     print_scan_totals(results, targets, elapsed=elapsed)
     if args.verbose:
         print_verbose_detail(results)
+    offer_rotation_list(results, force=args.rotation_list)
 
 
 def cmd_scrub(args):
@@ -1545,6 +1616,8 @@ def cmd_scrub(args):
             print(f"\n📦 ccrider DB has {ccrider_secrets} secrets from cached sessions.")
             print("   Rebuild it from the now-scrubbed session files:")
             print("     ccrider sync --force")
+
+    offer_rotation_list(scan_results, force=args.rotation_list)
 
     # Invalidate cache after scrubbing
     secure_delete(SCAN_CACHE_FILE)
