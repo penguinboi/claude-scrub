@@ -4,7 +4,6 @@
 import importlib.machinery
 import importlib.util
 import shutil
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -79,7 +78,6 @@ def test_no_subcommand_shows_help():
 
 
 class TestPatternEngine(unittest.TestCase):
-
     def test_builtin_patterns_are_named(self):
         patterns = cs.get_builtin_patterns()
         self.assertGreater(len(patterns), 30)
@@ -145,7 +143,6 @@ class TestPatternEngine(unittest.TestCase):
 
 
 class TestFileDiscovery(unittest.TestCase):
-
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
         self.claude_dir = Path(self.tmpdir) / ".claude"
@@ -228,7 +225,6 @@ class TestFileDiscovery(unittest.TestCase):
 
 
 class TestScanCommand(unittest.TestCase):
-
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
         self.claude_dir = Path(self.tmpdir) / ".claude"
@@ -237,13 +233,10 @@ class TestScanCommand(unittest.TestCase):
         proj.mkdir(parents=True)
 
         (proj / "abc123.jsonl").write_text(
-            '{"message":"my key is AKIAIOSFODNN7EXAMPLE"}\n'
-            '{"message":"also sk_live_abcdefghij1234567890"}\n'
+            '{"message":"my key is AKIAIOSFODNN7EXAMPLE"}\n{"message":"also sk_live_abcdefghij1234567890"}\n'
         )
         (proj / "clean.jsonl").write_text('{"message":"nothing secret here"}\n')
-        (self.claude_dir / "history.jsonl").write_text(
-            '{"prompt":"set token=ghp_ABCDEFghijklmnopqrst1234567890ab"}\n'
-        )
+        (self.claude_dir / "history.jsonl").write_text('{"prompt":"set token=ghp_ABCDEFghijklmnopqrst1234567890ab"}\n')
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
@@ -326,6 +319,7 @@ class TestScanCommand(unittest.TestCase):
         """Progress output should include [N/M] global file counter."""
         import io
         from contextlib import redirect_stdout
+
         patterns = cs.get_builtin_patterns()
         targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
         total_files = sum(len(v) for v in targets.values())
@@ -342,6 +336,7 @@ class TestScanCommand(unittest.TestCase):
         """Progress output should show running secret count when secrets exist."""
         import io
         from contextlib import redirect_stdout
+
         patterns = cs.get_builtin_patterns()
         targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
         buf = io.StringIO()
@@ -355,6 +350,7 @@ class TestScanCommand(unittest.TestCase):
         """ETA should not appear when scan completes in under 1 second."""
         import io
         from contextlib import redirect_stdout
+
         patterns = cs.get_builtin_patterns()
         targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
         buf = io.StringIO()
@@ -365,15 +361,13 @@ class TestScanCommand(unittest.TestCase):
 
 
 class TestPrintScanTotalsElapsed(unittest.TestCase):
-
     def test_totals_with_elapsed_time(self):
         """print_scan_totals should include elapsed time when provided."""
         import io
         from contextlib import redirect_stdout
-        results = {"sessions": {}, "indexes": {}, "history": {},
-                   "paste_cache": {}, "file_history": {}, "ccrider": {}}
-        summary = {"sessions": 5, "indexes": 2, "history": 1,
-                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+
+        results = {"sessions": {}, "indexes": {}, "history": {}, "paste_cache": {}, "file_history": {}, "ccrider": {}}
+        summary = {"sessions": 5, "indexes": 2, "history": 1, "paste_cache": 0, "file_history": 0, "ccrider": 0}
         buf = io.StringIO()
         with redirect_stdout(buf):
             cs.print_scan_totals(results, summary, elapsed=2.345)
@@ -384,11 +378,17 @@ class TestPrintScanTotalsElapsed(unittest.TestCase):
         """print_scan_totals should warn about credential rotation when secrets exist."""
         import io
         from contextlib import redirect_stdout
+
         fake_path = Path("/tmp/fake.jsonl")
-        results = {"sessions": {fake_path: [("AWS Key", "AKIA...", 1, "specific")]}, "indexes": {},
-                   "history": {}, "paste_cache": {}, "file_history": {}, "ccrider": {}}
-        summary = {"sessions": 1, "indexes": 0, "history": 0,
-                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+        results = {
+            "sessions": {fake_path: [("AWS Key", "AKIA...", 1, "specific")]},
+            "indexes": {},
+            "history": {},
+            "paste_cache": {},
+            "file_history": {},
+            "ccrider": {},
+        }
+        summary = {"sessions": 1, "indexes": 0, "history": 0, "paste_cache": 0, "file_history": 0, "ccrider": 0}
         buf = io.StringIO()
         with redirect_stdout(buf):
             cs.print_scan_totals(results, summary)
@@ -399,10 +399,9 @@ class TestPrintScanTotalsElapsed(unittest.TestCase):
         """print_scan_totals should not warn about rotation when no secrets found."""
         import io
         from contextlib import redirect_stdout
-        results = {"sessions": {}, "indexes": {}, "history": {},
-                   "paste_cache": {}, "file_history": {}, "ccrider": {}}
-        summary = {"sessions": 5, "indexes": 0, "history": 0,
-                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+
+        results = {"sessions": {}, "indexes": {}, "history": {}, "paste_cache": {}, "file_history": {}, "ccrider": {}}
+        summary = {"sessions": 5, "indexes": 0, "history": 0, "paste_cache": 0, "file_history": 0, "ccrider": 0}
         buf = io.StringIO()
         with redirect_stdout(buf):
             cs.print_scan_totals(results, summary)
@@ -413,10 +412,9 @@ class TestPrintScanTotalsElapsed(unittest.TestCase):
         """print_scan_totals should not show timing when elapsed is None."""
         import io
         from contextlib import redirect_stdout
-        results = {"sessions": {}, "indexes": {}, "history": {},
-                   "paste_cache": {}, "file_history": {}, "ccrider": {}}
-        summary = {"sessions": 5, "indexes": 2, "history": 1,
-                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+
+        results = {"sessions": {}, "indexes": {}, "history": {}, "paste_cache": {}, "file_history": {}, "ccrider": {}}
+        summary = {"sessions": 5, "indexes": 2, "history": 1, "paste_cache": 0, "file_history": 0, "ccrider": 0}
         buf = io.StringIO()
         with redirect_stdout(buf):
             cs.print_scan_totals(results, summary)
@@ -425,7 +423,6 @@ class TestPrintScanTotalsElapsed(unittest.TestCase):
 
 
 class TestIsClaudeCodeRunning(unittest.TestCase):
-
     def test_returns_bool(self):
         """is_claude_code_running should return a boolean."""
         result = cs.is_claude_code_running()
@@ -433,7 +430,6 @@ class TestIsClaudeCodeRunning(unittest.TestCase):
 
 
 class TestScrubCommand(unittest.TestCase):
-
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
         self.claude_dir = Path(self.tmpdir) / ".claude"
@@ -442,10 +438,7 @@ class TestScrubCommand(unittest.TestCase):
         proj.mkdir(parents=True)
 
         self.secret_file = proj / "abc123.jsonl"
-        self.secret_file.write_text(
-            '{"message":"key is AKIAIOSFODNN7EXAMPLE here"}\n'
-            '{"message":"clean line"}\n'
-        )
+        self.secret_file.write_text('{"message":"key is AKIAIOSFODNN7EXAMPLE here"}\n{"message":"clean line"}\n')
 
         self.history = self.claude_dir / "history.jsonl"
         self.history.write_text('{"prompt":"token=ghp_ABCDEFghijklmnopqrst1234567890ab"}\n')
@@ -456,7 +449,7 @@ class TestScrubCommand(unittest.TestCase):
     def test_scrub_replaces_secrets_in_files(self):
         patterns = cs.get_builtin_patterns()
         targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
-        stats = cs.scrub_targets(targets, patterns)
+        cs.scrub_targets(targets, patterns)
         content = self.secret_file.read_text()
         self.assertNotIn("AKIAIOSFODNN7EXAMPLE", content)
         self.assertIn("[REDACTED:", content)
@@ -513,7 +506,6 @@ class TestScrubCommand(unittest.TestCase):
 
 
 class TestCustomPatterns(unittest.TestCase):
-
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
         self.config_dir = Path(self.tmpdir) / ".config" / "claude-scrub"
@@ -525,11 +517,11 @@ class TestCustomPatterns(unittest.TestCase):
     def test_load_custom_patterns_from_toml(self):
         config = self.config_dir / "config.toml"
         config.write_text(
-            '[[patterns]]\n'
+            "[[patterns]]\n"
             'name = "Internal Key"\n'
             'regex = "myco_[a-zA-Z0-9]{32}"\n'
-            '\n'
-            '[[patterns]]\n'
+            "\n"
+            "[[patterns]]\n"
             'name = "DB URL"\n'
             'regex = "postgres://[^\\\\s]+"\n'
         )
@@ -544,11 +536,7 @@ class TestCustomPatterns(unittest.TestCase):
 
     def test_custom_pattern_matches(self):
         config = self.config_dir / "config.toml"
-        config.write_text(
-            '[[patterns]]\n'
-            'name = "Internal Key"\n'
-            'regex = "myco_[a-zA-Z0-9]{32}"\n'
-        )
+        config.write_text('[[patterns]]\nname = "Internal Key"\nregex = "myco_[a-zA-Z0-9]{32}"\n')
         custom = cs.load_custom_patterns(config)
         text = "key=myco_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
         matches = cs.find_secrets(text, custom)
@@ -558,11 +546,11 @@ class TestCustomPatterns(unittest.TestCase):
     def test_invalid_regex_skipped(self):
         config = self.config_dir / "config.toml"
         config.write_text(
-            '[[patterns]]\n'
+            "[[patterns]]\n"
             'name = "Bad Regex"\n'
             'regex = "[invalid(("\n'
-            '\n'
-            '[[patterns]]\n'
+            "\n"
+            "[[patterns]]\n"
             'name = "Good One"\n'
             'regex = "good_[a-z]+"\n'
         )
@@ -572,7 +560,6 @@ class TestCustomPatterns(unittest.TestCase):
 
 
 class TestPatternsDB(unittest.TestCase):
-
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
         self.cache_dir = Path(self.tmpdir) / "patterns-db"
@@ -583,12 +570,12 @@ class TestPatternsDB(unittest.TestCase):
 
     def test_parse_gitleaks_format(self):
         gitleaks_toml = (
-            '[[rules]]\n'
+            "[[rules]]\n"
             'id = "aws-access-key"\n'
             'description = "AWS Access Key"\n'
             'regex = "(?:AKIA|ASIA)[0-9A-Z]{16}"\n'
-            '\n'
-            '[[rules]]\n'
+            "\n"
+            "[[rules]]\n"
             'id = "github-pat"\n'
             'description = "GitHub PAT"\n'
             'regex = "ghp_[A-Za-z0-9_]{36}"\n'
@@ -600,12 +587,7 @@ class TestPatternsDB(unittest.TestCase):
         self.assertEqual(patterns[1]["name"], "GitHub PAT")
 
     def test_parse_gitleaks_invalid_regex(self):
-        gitleaks_toml = (
-            '[[rules]]\n'
-            'id = "bad"\n'
-            'description = "Bad Pattern"\n'
-            'regex = "[invalid((regex"\n'
-        )
+        gitleaks_toml = '[[rules]]\nid = "bad"\ndescription = "Bad Pattern"\nregex = "[invalid((regex"\n'
         (self.cache_dir / "gitleaks.toml").write_text(gitleaks_toml)
         patterns = cs.load_patterns_db(self.cache_dir / "gitleaks.toml")
         self.assertEqual(len(patterns), 0)
@@ -616,7 +598,6 @@ class TestPatternsDB(unittest.TestCase):
 
 
 class TestEntropy(unittest.TestCase):
-
     def test_single_char_string(self):
         """All-same characters have zero entropy."""
         self.assertAlmostEqual(cs.entropy("aaaaaa"), 0.0, places=2)
@@ -645,7 +626,6 @@ class TestEntropy(unittest.TestCase):
 
 
 class TestLuhnCheck(unittest.TestCase):
-
     def test_valid_visa(self):
         self.assertTrue(cs.luhn_check("4111111111111111"))
 
@@ -670,7 +650,7 @@ class TestLuhnCheck(unittest.TestCase):
 
     def test_credit_card_pattern_finds_valid_cards(self):
         """The credit card pattern should detect Luhn-valid card numbers in text."""
-        text = 'card on file: 4111 1111 1111 1111 thanks'
+        text = "card on file: 4111 1111 1111 1111 thanks"
         patterns = cs.get_builtin_patterns()
         matches = cs.find_secrets(text, patterns)
         names = [m[0] for m in matches]
@@ -678,7 +658,7 @@ class TestLuhnCheck(unittest.TestCase):
 
     def test_credit_card_pattern_skips_invalid_luhn(self):
         """Card-shaped numbers that fail Luhn should not match."""
-        text = 'order number: 4111 1111 1111 1112'
+        text = "order number: 4111 1111 1111 1112"
         patterns = cs.get_builtin_patterns()
         matches = cs.find_secrets(text, patterns)
         names = [m[0] for m in matches]
@@ -686,42 +666,41 @@ class TestLuhnCheck(unittest.TestCase):
 
 
 class TestPatternTiers(unittest.TestCase):
-
     def test_generic_patterns_set_only_contains_generic_secret(self):
         """Only Generic Secret Assignment should be in the generic tier."""
         self.assertEqual(cs.GENERIC_PATTERNS, {"Generic Secret Assignment"})
 
     def test_narrowed_generic_does_not_match_bare_key(self):
         """'key=something' should no longer match generic pattern."""
-        text = 'key=myConfigSetting123'
+        text = "key=myConfigSetting123"
         patterns = [p for p in cs.get_builtin_patterns() if p["name"] == "Generic Secret Assignment"]
         matches = cs.find_secrets(text, patterns)
         self.assertEqual(len(matches), 0)
 
     def test_narrowed_generic_does_not_match_bare_token(self):
         """'token=something' should no longer match generic pattern."""
-        text = 'token=development_value'
+        text = "token=development_value"
         patterns = [p for p in cs.get_builtin_patterns() if p["name"] == "Generic Secret Assignment"]
         matches = cs.find_secrets(text, patterns)
         self.assertEqual(len(matches), 0)
 
     def test_narrowed_generic_still_matches_password(self):
         """'password=something' should still match."""
-        text = 'password=mysecretpassword123'
+        text = "password=mysecretpassword123"
         patterns = [p for p in cs.get_builtin_patterns() if p["name"] == "Generic Secret Assignment"]
         matches = cs.find_secrets(text, patterns)
         self.assertEqual(len(matches), 1)
 
     def test_narrowed_generic_still_matches_api_key(self):
         """'api_key=something' should still match."""
-        text = 'api_key=abc123def456ghi7'
+        text = "api_key=abc123def456ghi7"
         patterns = [p for p in cs.get_builtin_patterns() if p["name"] == "Generic Secret Assignment"]
         matches = cs.find_secrets(text, patterns)
         self.assertEqual(len(matches), 1)
 
     def test_narrowed_generic_matches_secret_key(self):
         """'secret_key=something' should match."""
-        text = 'secret_key=abc123def456ghi7'
+        text = "secret_key=abc123def456ghi7"
         patterns = [p for p in cs.get_builtin_patterns() if p["name"] == "Generic Secret Assignment"]
         matches = cs.find_secrets(text, patterns)
         self.assertEqual(len(matches), 1)
@@ -740,7 +719,6 @@ class TestPatternTiers(unittest.TestCase):
 
 
 class TestFindSecretsTier(unittest.TestCase):
-
     def test_find_secrets_returns_4_tuples(self):
         """find_secrets should return (name, match_text, line_num, tier)."""
         text = "key is AKIAIOSFODNN7EXAMPLE"
@@ -790,16 +768,11 @@ class TestEndToEnd(unittest.TestCase):
         proj.mkdir(parents=True)
 
         (proj / "session1.jsonl").write_text(
-            '{"message":"AWS key: AKIAIOSFODNN7EXAMPLE"}\n'
-            '{"message":"Stripe: sk_live_abcdefghij1234567890"}\n'
+            '{"message":"AWS key: AKIAIOSFODNN7EXAMPLE"}\n{"message":"Stripe: sk_live_abcdefghij1234567890"}\n'
         )
-        (proj / "session2.jsonl").write_text(
-            '{"message":"no secrets here"}\n'
-        )
+        (proj / "session2.jsonl").write_text('{"message":"no secrets here"}\n')
 
-        (self.claude_dir / "history.jsonl").write_text(
-            '{"prompt":"ghp_ABCDEFghijklmnopqrst1234567890ab"}\n'
-        )
+        (self.claude_dir / "history.jsonl").write_text('{"prompt":"ghp_ABCDEFghijklmnopqrst1234567890ab"}\n')
 
         paste = self.claude_dir / "paste-cache"
         paste.mkdir()
@@ -807,6 +780,7 @@ class TestEndToEnd(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         shutil.rmtree(self.tmpdir)
 
     def test_full_scan_scrub_rescan_cycle(self):
@@ -815,9 +789,7 @@ class TestEndToEnd(unittest.TestCase):
         # 1. Scan — should find secrets
         targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
         results = cs.scan_targets(targets, patterns)
-        initial_count = sum(
-            len(m) for cat in results.values() for m in cat.values()
-        )
+        initial_count = sum(len(m) for cat in results.values() for m in cat.values())
         self.assertGreater(initial_count, 0)
 
         # 2. Scrub sessions + history (default targets)
@@ -845,14 +817,11 @@ class TestEndToEnd(unittest.TestCase):
         # 6. Final re-scan — everything clean
         targets4 = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
         results4 = cs.scan_targets(targets4, patterns)
-        final_count = sum(
-            len(m) for cat in results4.values() for m in cat.values()
-        )
+        final_count = sum(len(m) for cat in results4.values() for m in cat.values())
         self.assertEqual(final_count, 0)
 
 
 class TestTieredScrub(unittest.TestCase):
-
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
         self.claude_dir = Path(self.tmpdir) / ".claude"
@@ -866,9 +835,7 @@ class TestTieredScrub(unittest.TestCase):
 
     def test_default_scrub_keeps_generic_matches(self):
         """Default scrub should NOT redact low-entropy generic matches."""
-        self.secret_file.write_text(
-            '{"message":"password=development_mode and AKIAIOSFODNN7EXAMPLE"}\n'
-        )
+        self.secret_file.write_text('{"message":"password=development_mode and AKIAIOSFODNN7EXAMPLE"}\n')
         patterns = cs.get_builtin_patterns()
         targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
         cs.scrub_targets(targets, patterns)
@@ -878,9 +845,7 @@ class TestTieredScrub(unittest.TestCase):
 
     def test_aggressive_scrub_removes_generic_matches(self):
         """--aggressive should redact generic matches too."""
-        self.secret_file.write_text(
-            '{"message":"password=development_mode here"}\n'
-        )
+        self.secret_file.write_text('{"message":"password=development_mode here"}\n')
         patterns = cs.get_builtin_patterns()
         targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
         cs.scrub_targets(targets, patterns, aggressive=True)
@@ -890,9 +855,7 @@ class TestTieredScrub(unittest.TestCase):
 
     def test_high_entropy_generic_scrubbed_by_default(self):
         """High-entropy generic match should be scrubbed even without --aggressive."""
-        self.secret_file.write_text(
-            '{"message":"api_key=sK3j8fAx7mNp2qRwL9vB"}\n'
-        )
+        self.secret_file.write_text('{"message":"api_key=sK3j8fAx7mNp2qRwL9vB"}\n')
         patterns = cs.get_builtin_patterns()
         targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
         cs.scrub_targets(targets, patterns)
@@ -909,22 +872,26 @@ class TestTieredScrub(unittest.TestCase):
 
 
 class TestScanTierOutput(unittest.TestCase):
-
     def test_scan_totals_shows_tier_breakdown(self):
         """print_scan_totals should split counts by tier."""
         import io
         from contextlib import redirect_stdout
+
         fake_path = Path("/tmp/fake.jsonl")
         results = {
-            "sessions": {fake_path: [
-                ("AWS Key", "AKIA...", 1, "specific"),
-                ("Generic Secret Assignment", "password=dev_mode_val", 2, "generic"),
-            ]},
-            "indexes": {}, "history": {}, "paste_cache": {},
-            "file_history": {}, "ccrider": {},
+            "sessions": {
+                fake_path: [
+                    ("AWS Key", "AKIA...", 1, "specific"),
+                    ("Generic Secret Assignment", "password=dev_mode_val", 2, "generic"),
+                ]
+            },
+            "indexes": {},
+            "history": {},
+            "paste_cache": {},
+            "file_history": {},
+            "ccrider": {},
         }
-        summary = {"sessions": 1, "indexes": 0, "history": 0,
-                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+        summary = {"sessions": 1, "indexes": 0, "history": 0, "paste_cache": 0, "file_history": 0, "ccrider": 0}
         buf = io.StringIO()
         with redirect_stdout(buf):
             cs.print_scan_totals(results, summary)
@@ -936,14 +903,17 @@ class TestScanTierOutput(unittest.TestCase):
         """Total line should say 'matches' not 'secrets'."""
         import io
         from contextlib import redirect_stdout
+
         fake_path = Path("/tmp/fake.jsonl")
         results = {
             "sessions": {fake_path: [("AWS Key", "AKIA...", 1, "specific")]},
-            "indexes": {}, "history": {}, "paste_cache": {},
-            "file_history": {}, "ccrider": {},
+            "indexes": {},
+            "history": {},
+            "paste_cache": {},
+            "file_history": {},
+            "ccrider": {},
         }
-        summary = {"sessions": 1, "indexes": 0, "history": 0,
-                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+        summary = {"sessions": 1, "indexes": 0, "history": 0, "paste_cache": 0, "file_history": 0, "ccrider": 0}
         buf = io.StringIO()
         with redirect_stdout(buf):
             cs.print_scan_totals(results, summary)
@@ -955,14 +925,17 @@ class TestScanTierOutput(unittest.TestCase):
         """Generic line should not appear when there are no generic matches."""
         import io
         from contextlib import redirect_stdout
+
         fake_path = Path("/tmp/fake.jsonl")
         results = {
             "sessions": {fake_path: [("AWS Key", "AKIA...", 1, "specific")]},
-            "indexes": {}, "history": {}, "paste_cache": {},
-            "file_history": {}, "ccrider": {},
+            "indexes": {},
+            "history": {},
+            "paste_cache": {},
+            "file_history": {},
+            "ccrider": {},
         }
-        summary = {"sessions": 1, "indexes": 0, "history": 0,
-                   "paste_cache": 0, "file_history": 0, "ccrider": 0}
+        summary = {"sessions": 1, "indexes": 0, "history": 0, "paste_cache": 0, "file_history": 0, "ccrider": 0}
         buf = io.StringIO()
         with redirect_stdout(buf):
             cs.print_scan_totals(results, summary)
@@ -973,6 +946,7 @@ class TestScanTierOutput(unittest.TestCase):
         """Progress lines should say 'matches' not 'secrets'."""
         import io
         from contextlib import redirect_stdout
+
         tmpdir = tempfile.mkdtemp()
         claude_dir = Path(tmpdir) / ".claude"
         proj = claude_dir / "projects" / "-test"
@@ -986,7 +960,7 @@ class TestScanTierOutput(unittest.TestCase):
             cs.scan_targets(targets, patterns, show_progress=True)
         output = buf.getvalue()
         # Final summary lines should use "match" or "matches"
-        lines = [l for l in output.split("\n") if "found" in l]
+        lines = [line for line in output.split("\n") if "found" in line]
         for line in lines:
             self.assertIn("match", line.lower())
         shutil.rmtree(tmpdir)
@@ -995,14 +969,20 @@ class TestScanTierOutput(unittest.TestCase):
         """Verbose output should tag generic matches with [generic]."""
         import io
         from contextlib import redirect_stdout
+
         fake_path = Path("/tmp/fake.jsonl")
         results = {
-            "sessions": {fake_path: [
-                ("AWS Key", "AKIA...", 1, "specific"),
-                ("Generic Secret Assignment", "password=dev_mode_val", 2, "generic"),
-            ]},
-            "indexes": {}, "history": {}, "paste_cache": {},
-            "file_history": {}, "ccrider": {},
+            "sessions": {
+                fake_path: [
+                    ("AWS Key", "AKIA...", 1, "specific"),
+                    ("Generic Secret Assignment", "password=dev_mode_val", 2, "generic"),
+                ]
+            },
+            "indexes": {},
+            "history": {},
+            "paste_cache": {},
+            "file_history": {},
+            "ccrider": {},
         }
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -1014,13 +994,19 @@ class TestScanTierOutput(unittest.TestCase):
         """Verbose output should NOT tag specific matches with [specific]."""
         import io
         from contextlib import redirect_stdout
+
         fake_path = Path("/tmp/fake.jsonl")
         results = {
-            "sessions": {fake_path: [
-                ("AWS Key", "AKIA...", 1, "specific"),
-            ]},
-            "indexes": {}, "history": {}, "paste_cache": {},
-            "file_history": {}, "ccrider": {},
+            "sessions": {
+                fake_path: [
+                    ("AWS Key", "AKIA...", 1, "specific"),
+                ]
+            },
+            "indexes": {},
+            "history": {},
+            "paste_cache": {},
+            "file_history": {},
+            "ccrider": {},
         }
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -1034,6 +1020,7 @@ class TestScanTierOutput(unittest.TestCase):
 # Rotation list
 # ---------------------------------------------------------------------------
 
+
 class TestRotationList(unittest.TestCase):
     """Tests for build_rotation_list() which summarizes secrets for rotation."""
 
@@ -1043,24 +1030,26 @@ class TestRotationList(unittest.TestCase):
         proj = self.claude_dir / "projects" / "-Users-test-Code-myapp"
         proj.mkdir(parents=True)
         self.session_file = proj / "abc123.jsonl"
-        self.session_file.write_text(
-            '{"message":"my key is AKIAIOSFODNN7EXAMPLE"}\n'
-        )
+        self.session_file.write_text('{"message":"my key is AKIAIOSFODNN7EXAMPLE"}\n')
         self.history_file = self.claude_dir / "history.jsonl"
-        self.history_file.write_text(
-            '{"prompt":"ghp_ABCDEFghijklmnopqrst1234567890ab"}\n'
-        )
+        self.history_file.write_text('{"prompt":"ghp_ABCDEFghijklmnopqrst1234567890ab"}\n')
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
 
     def test_returns_list_of_dicts(self):
         results = {
-            "sessions": {self.session_file: [
-                ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 1, "specific"),
-            ]},
-            "history": {}, "indexes": {}, "paste_cache": {},
-            "file_history": {}, "memory": {}, "ccrider": {},
+            "sessions": {
+                self.session_file: [
+                    ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 1, "specific"),
+                ]
+            },
+            "history": {},
+            "indexes": {},
+            "paste_cache": {},
+            "file_history": {},
+            "memory": {},
+            "ccrider": {},
         }
         rotation = cs.build_rotation_list(results)
         self.assertIsInstance(rotation, list)
@@ -1068,12 +1057,18 @@ class TestRotationList(unittest.TestCase):
 
     def test_contains_pattern_name_and_count(self):
         results = {
-            "sessions": {self.session_file: [
-                ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 1, "specific"),
-                ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 5, "specific"),
-            ]},
-            "history": {}, "indexes": {}, "paste_cache": {},
-            "file_history": {}, "memory": {}, "ccrider": {},
+            "sessions": {
+                self.session_file: [
+                    ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 1, "specific"),
+                    ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 5, "specific"),
+                ]
+            },
+            "history": {},
+            "indexes": {},
+            "paste_cache": {},
+            "file_history": {},
+            "memory": {},
+            "ccrider": {},
         }
         rotation = cs.build_rotation_list(results)
         aws_entry = [r for r in rotation if r["name"] == "AWS Access Key"]
@@ -1082,14 +1077,21 @@ class TestRotationList(unittest.TestCase):
 
     def test_includes_earliest_and_latest_dates(self):
         results = {
-            "sessions": {self.session_file: [
-                ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 1, "specific"),
-            ]},
-            "history": {self.history_file: [
-                ("GitHub Token", "ghp_ABCDEFghijklmnopqrst1234567890ab", 1, "specific"),
-            ]},
-            "indexes": {}, "paste_cache": {},
-            "file_history": {}, "memory": {}, "ccrider": {},
+            "sessions": {
+                self.session_file: [
+                    ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 1, "specific"),
+                ]
+            },
+            "history": {
+                self.history_file: [
+                    ("GitHub Token", "ghp_ABCDEFghijklmnopqrst1234567890ab", 1, "specific"),
+                ]
+            },
+            "indexes": {},
+            "paste_cache": {},
+            "file_history": {},
+            "memory": {},
+            "ccrider": {},
         }
         rotation = cs.build_rotation_list(results)
         for entry in rotation:
@@ -1101,12 +1103,18 @@ class TestRotationList(unittest.TestCase):
 
     def test_multiple_secret_types(self):
         results = {
-            "sessions": {self.session_file: [
-                ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 1, "specific"),
-                ("Stripe Key", "sk_live_abc123", 2, "specific"),
-            ]},
-            "history": {}, "indexes": {}, "paste_cache": {},
-            "file_history": {}, "memory": {}, "ccrider": {},
+            "sessions": {
+                self.session_file: [
+                    ("AWS Access Key", "AKIAIOSFODNN7EXAMPLE", 1, "specific"),
+                    ("Stripe Key", "sk_live_abc123", 2, "specific"),
+                ]
+            },
+            "history": {},
+            "indexes": {},
+            "paste_cache": {},
+            "file_history": {},
+            "memory": {},
+            "ccrider": {},
         }
         rotation = cs.build_rotation_list(results)
         names = {r["name"] for r in rotation}
@@ -1114,22 +1122,33 @@ class TestRotationList(unittest.TestCase):
 
     def test_empty_results_returns_empty_list(self):
         results = {
-            "sessions": {}, "history": {}, "indexes": {},
-            "paste_cache": {}, "file_history": {}, "memory": {}, "ccrider": {},
+            "sessions": {},
+            "history": {},
+            "indexes": {},
+            "paste_cache": {},
+            "file_history": {},
+            "memory": {},
+            "ccrider": {},
         }
         rotation = cs.build_rotation_list(results)
         self.assertEqual(rotation, [])
 
     def test_sorted_by_count_descending(self):
         results = {
-            "sessions": {self.session_file: [
-                ("Stripe Key", "sk_live_abc", 1, "specific"),
-                ("AWS Access Key", "AKIA...", 2, "specific"),
-                ("AWS Access Key", "AKIA...", 3, "specific"),
-                ("AWS Access Key", "AKIA...", 5, "specific"),
-            ]},
-            "history": {}, "indexes": {}, "paste_cache": {},
-            "file_history": {}, "memory": {}, "ccrider": {},
+            "sessions": {
+                self.session_file: [
+                    ("Stripe Key", "sk_live_abc", 1, "specific"),
+                    ("AWS Access Key", "AKIA...", 2, "specific"),
+                    ("AWS Access Key", "AKIA...", 3, "specific"),
+                    ("AWS Access Key", "AKIA...", 5, "specific"),
+                ]
+            },
+            "history": {},
+            "indexes": {},
+            "paste_cache": {},
+            "file_history": {},
+            "memory": {},
+            "ccrider": {},
         }
         rotation = cs.build_rotation_list(results)
         self.assertEqual(rotation[0]["name"], "AWS Access Key")
@@ -1141,10 +1160,8 @@ class TestFormatRotationList(unittest.TestCase):
 
     def test_formats_readable_output(self):
         rotation = [
-            {"name": "AWS Access Key", "count": 3,
-             "earliest": "2026-03-01", "latest": "2026-03-08"},
-            {"name": "GitHub Token", "count": 1,
-             "earliest": "2026-03-05", "latest": "2026-03-05"},
+            {"name": "AWS Access Key", "count": 3, "earliest": "2026-03-01", "latest": "2026-03-08"},
+            {"name": "GitHub Token", "count": 1, "earliest": "2026-03-05", "latest": "2026-03-05"},
         ]
         output = cs.format_rotation_list(rotation)
         self.assertIn("AWS Access Key", output)
@@ -1163,10 +1180,8 @@ class TestSaveRotationList(unittest.TestCase):
     def setUp(self):
         self.tmpdir = Path(tempfile.mkdtemp())
         self.rotation = [
-            {"name": "AWS Access Key", "count": 3,
-             "earliest": "2026-03-01", "latest": "2026-03-08"},
-            {"name": "GitHub Token", "count": 1,
-             "earliest": "2026-03-05", "latest": "2026-03-05"},
+            {"name": "AWS Access Key", "count": 3, "earliest": "2026-03-01", "latest": "2026-03-08"},
+            {"name": "GitHub Token", "count": 1, "earliest": "2026-03-05", "latest": "2026-03-05"},
         ]
 
     def tearDown(self):
@@ -1185,6 +1200,7 @@ class TestSaveRotationList(unittest.TestCase):
         self.assertTrue(path.exists())
         self.assertEqual(path.suffix, ".json")
         import json
+
         data = json.loads(path.read_text())
         creds = data["credentials"]
         self.assertEqual(len(creds), 2)
@@ -1198,6 +1214,7 @@ class TestSaveRotationList(unittest.TestCase):
 
     def test_json_includes_generated_timestamp(self):
         import json
+
         path = cs.save_rotation_list(self.rotation, fmt="json", config_dir=self.tmpdir)
         data = json.loads(path.read_text())
         self.assertIn("generated_at", data)
@@ -1207,6 +1224,7 @@ class TestSaveRotationList(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Stats command
 # ---------------------------------------------------------------------------
+
 
 class TestGatherStats(unittest.TestCase):
     """Tests for gather_stats() which mines session JSONL files for usage data."""
@@ -1222,6 +1240,7 @@ class TestGatherStats(unittest.TestCase):
     def _write_session(self, project_name, session_id, lines):
         """Helper to write a JSONL session file with the given JSON lines."""
         import json
+
         pdir = self.projects_dir / project_name
         pdir.mkdir(exist_ok=True)
         fpath = pdir / f"{session_id}.jsonl"
@@ -1240,13 +1259,17 @@ class TestGatherStats(unittest.TestCase):
 
     def test_gather_stats_counts_messages(self):
         """Counts user and assistant messages from JSONL entries."""
-        self._write_session("proj1", "abc", [
-            {"type": "user", "timestamp": "2026-01-15T10:00:00Z"},
-            {"type": "assistant", "timestamp": "2026-01-15T10:00:01Z"},
-            {"type": "assistant", "timestamp": "2026-01-15T10:00:02Z"},
-            {"type": "user", "timestamp": "2026-01-15T10:00:03Z"},
-            {"type": "progress"},  # not counted
-        ])
+        self._write_session(
+            "proj1",
+            "abc",
+            [
+                {"type": "user", "timestamp": "2026-01-15T10:00:00Z"},
+                {"type": "assistant", "timestamp": "2026-01-15T10:00:01Z"},
+                {"type": "assistant", "timestamp": "2026-01-15T10:00:02Z"},
+                {"type": "user", "timestamp": "2026-01-15T10:00:03Z"},
+                {"type": "progress"},  # not counted
+            ],
+        )
         stats = cs.gather_stats(self.tmpdir)
         self.assertEqual(stats["total_sessions"], 1)
         self.assertEqual(stats["total_user_messages"], 2)
@@ -1254,17 +1277,29 @@ class TestGatherStats(unittest.TestCase):
 
     def test_gather_stats_multiple_projects(self):
         """Counts sessions and projects across multiple project dirs."""
-        self._write_session("proj1", "s1", [
-            {"type": "user", "timestamp": "2026-01-15T10:00:00Z"},
-            {"type": "assistant", "timestamp": "2026-01-15T10:00:01Z"},
-        ])
-        self._write_session("proj1", "s2", [
-            {"type": "user", "timestamp": "2026-02-01T10:00:00Z"},
-        ])
-        self._write_session("proj2", "s3", [
-            {"type": "user", "timestamp": "2026-03-01T10:00:00Z"},
-            {"type": "assistant", "timestamp": "2026-03-01T10:00:01Z"},
-        ])
+        self._write_session(
+            "proj1",
+            "s1",
+            [
+                {"type": "user", "timestamp": "2026-01-15T10:00:00Z"},
+                {"type": "assistant", "timestamp": "2026-01-15T10:00:01Z"},
+            ],
+        )
+        self._write_session(
+            "proj1",
+            "s2",
+            [
+                {"type": "user", "timestamp": "2026-02-01T10:00:00Z"},
+            ],
+        )
+        self._write_session(
+            "proj2",
+            "s3",
+            [
+                {"type": "user", "timestamp": "2026-03-01T10:00:00Z"},
+                {"type": "assistant", "timestamp": "2026-03-01T10:00:01Z"},
+            ],
+        )
         stats = cs.gather_stats(self.tmpdir)
         self.assertEqual(stats["total_sessions"], 3)
         self.assertEqual(stats["total_projects"], 2)
@@ -1273,12 +1308,20 @@ class TestGatherStats(unittest.TestCase):
 
     def test_gather_stats_finds_earliest_session(self):
         """Reports the earliest timestamp across all sessions."""
-        self._write_session("proj1", "old", [
-            {"type": "user", "timestamp": "2025-06-14T08:00:00Z"},
-        ])
-        self._write_session("proj1", "new", [
-            {"type": "user", "timestamp": "2026-03-01T10:00:00Z"},
-        ])
+        self._write_session(
+            "proj1",
+            "old",
+            [
+                {"type": "user", "timestamp": "2025-06-14T08:00:00Z"},
+            ],
+        )
+        self._write_session(
+            "proj1",
+            "new",
+            [
+                {"type": "user", "timestamp": "2026-03-01T10:00:00Z"},
+            ],
+        )
         stats = cs.gather_stats(self.tmpdir)
         self.assertEqual(stats["first_session_date"], "2025-06-14")
 
@@ -1295,35 +1338,51 @@ class TestGatherStats(unittest.TestCase):
     def test_gather_stats_biggest_file(self):
         """Reports the largest session file by size."""
         # Write a small session
-        self._write_session("proj1", "small", [
-            {"type": "user", "timestamp": "2026-01-01T00:00:00Z"},
-        ])
+        self._write_session(
+            "proj1",
+            "small",
+            [
+                {"type": "user", "timestamp": "2026-01-01T00:00:00Z"},
+            ],
+        )
         # Write a bigger session
-        self._write_session("proj1", "big", [
-            {"type": "user", "timestamp": "2026-01-01T00:00:00Z", "message": {"content": "x" * 1000}},
-            {"type": "assistant", "timestamp": "2026-01-01T00:00:01Z", "message": {"content": "y" * 2000}},
-            {"type": "user", "timestamp": "2026-01-01T00:00:02Z", "message": {"content": "z" * 1500}},
-        ])
+        self._write_session(
+            "proj1",
+            "big",
+            [
+                {"type": "user", "timestamp": "2026-01-01T00:00:00Z", "message": {"content": "x" * 1000}},
+                {"type": "assistant", "timestamp": "2026-01-01T00:00:01Z", "message": {"content": "y" * 2000}},
+                {"type": "user", "timestamp": "2026-01-01T00:00:02Z", "message": {"content": "z" * 1500}},
+            ],
+        )
         stats = cs.gather_stats(self.tmpdir)
         self.assertIn("big", stats["biggest_file_name"])
         self.assertGreater(stats["biggest_file_size"], 0)
 
     def test_gather_stats_disk_usage(self):
         """Reports total disk usage of the claude dir."""
-        self._write_session("proj1", "s1", [
-            {"type": "user", "timestamp": "2026-01-01T00:00:00Z", "message": {"content": "hello"}},
-        ])
+        self._write_session(
+            "proj1",
+            "s1",
+            [
+                {"type": "user", "timestamp": "2026-01-01T00:00:00Z", "message": {"content": "hello"}},
+            ],
+        )
         stats = cs.gather_stats(self.tmpdir)
         self.assertGreater(stats["disk_usage_bytes"], 0)
 
     def test_gather_stats_biggest_file_messages(self):
         """Reports message count for the biggest session file."""
-        self._write_session("proj1", "big", [
-            {"type": "user", "timestamp": "2026-01-01T00:00:00Z"},
-            {"type": "assistant", "timestamp": "2026-01-01T00:00:01Z"},
-            {"type": "user", "timestamp": "2026-01-01T00:00:02Z"},
-            {"type": "assistant", "timestamp": "2026-01-01T00:00:03Z"},
-        ])
+        self._write_session(
+            "proj1",
+            "big",
+            [
+                {"type": "user", "timestamp": "2026-01-01T00:00:00Z"},
+                {"type": "assistant", "timestamp": "2026-01-01T00:00:01Z"},
+                {"type": "user", "timestamp": "2026-01-01T00:00:02Z"},
+                {"type": "assistant", "timestamp": "2026-01-01T00:00:03Z"},
+            ],
+        )
         stats = cs.gather_stats(self.tmpdir)
         self.assertEqual(stats["biggest_file_messages"], 4)
 
