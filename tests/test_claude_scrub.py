@@ -477,20 +477,12 @@ class TestScrubCommand(unittest.TestCase):
         self.assertGreater(stats["total_secrets"], 0)
         self.assertGreater(stats["total_files"], 0)
 
-    def test_filter_excludes_memory_by_default(self):
+    def test_filter_includes_memory_by_default(self):
         mem_dir = self.claude_dir / "projects" / "-Users-test-Code-myapp" / "memory"
         mem_dir.mkdir(exist_ok=True)
         (mem_dir / "MEMORY.md").write_text("api_key = AKIAIOSFODNN7EXAMPLE")
         targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
         filtered = cs.filter_scrub_targets(targets, include="")
-        self.assertEqual(len(filtered["memory"]), 0)
-
-    def test_filter_includes_memory_when_requested(self):
-        mem_dir = self.claude_dir / "projects" / "-Users-test-Code-myapp" / "memory"
-        mem_dir.mkdir(exist_ok=True)
-        (mem_dir / "MEMORY.md").write_text("api_key = AKIAIOSFODNN7EXAMPLE")
-        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
-        filtered = cs.filter_scrub_targets(targets, include="memory")
         self.assertEqual(len(filtered["memory"]), 1)
 
     def test_scrub_respects_include_filter(self):

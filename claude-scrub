@@ -568,19 +568,21 @@ def load_scan_cache():
 
 
 def filter_scrub_targets(targets, include=""):
-    """Filter targets for scrub: sessions/indexes/history always included.
+    """Filter targets for scrub: sessions/indexes/history/memory always included.
 
-    Optional categories (paste-cache, file-history, memory, ccrider) are only
-    included when named in the comma-separated include string.
+    Optional categories (paste-cache, file-history, ccrider) are only
+    included when named in the comma-separated include string. These are
+    excluded by default because scrubbing could destroy useful clipboard
+    content, file snapshots, or corrupt a third-party database.
     """
     included = set(s.strip() for s in include.split(",") if s.strip())
     return {
         "sessions": targets.get("sessions", []),
         "indexes": targets.get("indexes", []),
         "history": targets.get("history", []),
+        "memory": targets.get("memory", []),
         "paste_cache": targets["paste_cache"] if "paste-cache" in included else [],
         "file_history": targets["file_history"] if "file-history" in included else [],
-        "memory": targets["memory"] if "memory" in included else [],
         "ccrider": targets["ccrider"] if "ccrider" in included else [],
     }
 
