@@ -299,6 +299,11 @@ def secure_delete(path):
     """Overwrite file contents with zeros before unlinking.
 
     Returns True on success, False on failure (logs warning to stderr).
+
+    Note: Single-pass zero overwrite is best-effort. On SSDs with wear-leveling
+    or journaling filesystems, original data may persist in reallocated sectors.
+    This is not forensically resistant — use full-disk encryption for stronger
+    guarantees.
     """
     try:
         size = path.stat().st_size
@@ -372,7 +377,12 @@ ENTROPY_THRESHOLD = 3.8
 
 
 def entropy(s):
-    """Compute Shannon entropy in bits per character."""
+    """Compute Shannon entropy in bits per character.
+
+    Used as a heuristic to promote generic pattern matches above the
+    ENTROPY_THRESHOLD to specific tier. High entropy alone does not guarantee
+    a value is a secret — this filters out obviously human-readable strings.
+    """
     if not s:
         return 0.0
     freq = Counter(s)
