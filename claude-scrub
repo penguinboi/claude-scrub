@@ -479,19 +479,39 @@ def load_patterns_db(toml_path):
     return patterns
 
 
+DOWNLOAD_TIMEOUT = 30
+MAX_PATTERNS_DB_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
 def download_patterns_db():
     """Download secrets-patterns-db gitleaks TOML to local cache."""
+    import socket
     import urllib.error
     import urllib.request
 
     PATTERNS_DB_CACHE.parent.mkdir(parents=True, exist_ok=True)
     print(f"Downloading patterns-db to {PATTERNS_DB_CACHE}...")
+    old_timeout = socket.getdefaulttimeout()
     try:
+        socket.setdefaulttimeout(DOWNLOAD_TIMEOUT)
         urllib.request.urlretrieve(PATTERNS_DB_TOML_URL, PATTERNS_DB_CACHE)
-        print("Downloaded successfully.")
     except (urllib.error.URLError, OSError) as e:
         print(f"Error downloading patterns-db: {e}", file=sys.stderr)
         return False
+    finally:
+        socket.setdefaulttimeout(old_timeout)
+
+    # Validate downloaded file size
+    try:
+        size = PATTERNS_DB_CACHE.stat().st_size
+        if size > MAX_PATTERNS_DB_SIZE:
+            print(f"Error: patterns-db too large ({size} bytes), removing", file=sys.stderr)
+            PATTERNS_DB_CACHE.unlink()
+            return False
+    except OSError:
+        return False
+
+    print("Downloaded successfully.")
     return True
 
 

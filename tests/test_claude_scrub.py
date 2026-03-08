@@ -1581,6 +1581,16 @@ class TestDownloadPatternsDB(unittest.TestCase):
                         node.type.id, "Exception", "download_patterns_db should not catch bare Exception"
                     )
 
+    def test_download_has_timeout_configured(self):
+        """Verify DOWNLOAD_TIMEOUT constant exists and is reasonable."""
+        self.assertGreater(cs.DOWNLOAD_TIMEOUT, 0)
+        self.assertLessEqual(cs.DOWNLOAD_TIMEOUT, 60)
+
+    def test_max_patterns_db_size_configured(self):
+        """Verify MAX_PATTERNS_DB_SIZE is set to a reasonable limit."""
+        self.assertGreater(cs.MAX_PATTERNS_DB_SIZE, 0)
+        self.assertLessEqual(cs.MAX_PATTERNS_DB_SIZE, 50 * 1024 * 1024)
+
 
 class TestStatsSubcommand(unittest.TestCase):
     """Tests for stats argparse integration."""
