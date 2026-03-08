@@ -657,6 +657,12 @@ def filter_scrub_targets(targets, include=""):
     content, file snapshots, or corrupt a third-party database.
     """
     included = set(s.strip() for s in include.split(",") if s.strip())
+    VALID_INCLUDE = {"paste-cache", "file-history", "ccrider", "memory"}
+    unknown = included - VALID_INCLUDE
+    for name in sorted(unknown):
+        print(
+            f"Warning: unknown --include category '{name}' (valid: {', '.join(sorted(VALID_INCLUDE))})", file=sys.stderr
+        )
     return {
         "sessions": targets.get("sessions", []),
         "indexes": targets.get("indexes", []),

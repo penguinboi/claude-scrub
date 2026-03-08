@@ -492,6 +492,16 @@ class TestScrubCommand(unittest.TestCase):
         included_targets = cs.filter_scrub_targets(targets, include="paste-cache")
         self.assertEqual(len(included_targets["paste_cache"]), 1)
 
+    def test_filter_warns_on_unknown_include_category(self):
+        import io
+        from contextlib import redirect_stderr
+
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            cs.filter_scrub_targets(targets, include="paste-cache,bogus-category")
+        self.assertIn("bogus-category", buf.getvalue())
+
     def test_scrub_idempotent(self):
         patterns = cs.get_builtin_patterns()
         targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
