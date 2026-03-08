@@ -1514,6 +1514,25 @@ class TestSecureDelete(unittest.TestCase):
         self.assertIn("secure delete failed", output)
 
 
+class TestDownloadPatternsDB(unittest.TestCase):
+    """Tests for download_patterns_db error handling."""
+
+    def test_download_catches_url_errors_not_all_exceptions(self):
+        """Verify we don't catch broad Exception."""
+        import ast
+        import inspect
+
+        source = inspect.getsource(cs.download_patterns_db)
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler):
+                # Should NOT catch bare Exception
+                if node.type and isinstance(node.type, ast.Name):
+                    self.assertNotEqual(
+                        node.type.id, "Exception", "download_patterns_db should not catch bare Exception"
+                    )
+
+
 class TestStatsSubcommand(unittest.TestCase):
     """Tests for stats argparse integration."""
 

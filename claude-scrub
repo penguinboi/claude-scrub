@@ -445,6 +445,7 @@ def load_patterns_db(toml_path):
 
 def download_patterns_db():
     """Download secrets-patterns-db gitleaks TOML to local cache."""
+    import urllib.error
     import urllib.request
 
     PATTERNS_DB_CACHE.parent.mkdir(parents=True, exist_ok=True)
@@ -452,7 +453,7 @@ def download_patterns_db():
     try:
         urllib.request.urlretrieve(PATTERNS_DB_TOML_URL, PATTERNS_DB_CACHE)
         print("Downloaded successfully.")
-    except Exception as e:
+    except (urllib.error.URLError, OSError) as e:
         print(f"Error downloading patterns-db: {e}", file=sys.stderr)
         return False
     return True
