@@ -194,6 +194,18 @@ Cached at `~/.config/claude-scrub/patterns-db/gitleaks.toml`.
 - Python 3.6+ (standard library only, no `pip install`)
 - Claude Code installed (`~/.claude/` directory)
 
+## Development
+
+```bash
+git clone https://github.com/penguinboi/claude-scrub.git
+cd claude-scrub
+pip install ruff pytest pre-commit
+pre-commit install
+python3 -m pytest tests/ -v
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
 ## License
 
 [MIT](LICENSE)
