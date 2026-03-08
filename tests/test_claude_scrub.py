@@ -1165,6 +1165,53 @@ class TestFormatRotationList(unittest.TestCase):
         self.assertIn("no credentials", output.lower())
 
 
+class TestSaveRotationList(unittest.TestCase):
+    """Tests for save_rotation_list() which persists the checklist to disk."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp())
+        self.rotation = [
+            {"name": "AWS Access Key", "count": 3,
+             "earliest": "2026-03-01", "latest": "2026-03-08"},
+            {"name": "GitHub Token", "count": 1,
+             "earliest": "2026-03-05", "latest": "2026-03-05"},
+        ]
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_saves_text_format(self):
+        path = cs.save_rotation_list(self.rotation, fmt="text", config_dir=self.tmpdir)
+        self.assertTrue(path.exists())
+        self.assertEqual(path.suffix, ".txt")
+        content = path.read_text()
+        self.assertIn("AWS Access Key", content)
+        self.assertIn("GitHub Token", content)
+
+    def test_saves_json_format(self):
+        path = cs.save_rotation_list(self.rotation, fmt="json", config_dir=self.tmpdir)
+        self.assertTrue(path.exists())
+        self.assertEqual(path.suffix, ".json")
+        import json
+        data = json.loads(path.read_text())
+        creds = data["credentials"]
+        self.assertEqual(len(creds), 2)
+        self.assertEqual(creds[0]["name"], "AWS Access Key")
+
+    def test_creates_config_dir_if_missing(self):
+        nested = self.tmpdir / "sub" / "dir"
+        path = cs.save_rotation_list(self.rotation, fmt="text", config_dir=nested)
+        self.assertTrue(nested.is_dir())
+        self.assertTrue(path.exists())
+
+    def test_json_includes_generated_timestamp(self):
+        import json
+        path = cs.save_rotation_list(self.rotation, fmt="json", config_dir=self.tmpdir)
+        data = json.loads(path.read_text())
+        self.assertIn("generated_at", data)
+        self.assertIn("credentials", data)
+
+
 # ---------------------------------------------------------------------------
 # Stats command
 # ---------------------------------------------------------------------------

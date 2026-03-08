@@ -1335,6 +1335,28 @@ def format_rotation_list(rotation):
     return "\n".join(lines)
 
 
+def save_rotation_list(rotation, fmt="text", config_dir=None):
+    """Save the rotation checklist to disk.
+
+    Returns the Path of the written file. Supports 'text' and 'json' formats.
+    """
+    if config_dir is None:
+        config_dir = CONFIG_DIR
+    config_dir.mkdir(parents=True, exist_ok=True)
+    if fmt == "json":
+        path = config_dir / "rotation-checklist.json"
+        data = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "credentials": rotation,
+        }
+        path.write_text(json.dumps(data, indent=2) + "\n")
+    else:
+        path = config_dir / "rotation-checklist.txt"
+        header = f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+        path.write_text(header + format_rotation_list(rotation) + "\n")
+    return path
+
+
 def gather_stats(claude_dir):
     """Mine session JSONL files for usage statistics."""
     projects_dir = claude_dir / "projects"
@@ -1463,6 +1485,23 @@ def cmd_stats(args):
     print(format_stats(stats))
 
 
+def prompt_save_rotation(rotation):
+    """Ask the user if they want to save the rotation checklist to disk."""
+    if not sys.stdout.isatty():
+        return
+    try:
+        answer = input("\nSave rotation checklist? (t)ext, (j)son, or (N)o: ")
+    except (EOFError, KeyboardInterrupt):
+        return
+    fmt = answer.strip().lower()
+    if fmt in ("t", "text"):
+        path = save_rotation_list(rotation, fmt="text")
+        print(f"Saved to {path}")
+    elif fmt in ("j", "json"):
+        path = save_rotation_list(rotation, fmt="json")
+        print(f"Saved to {path}")
+
+
 def offer_rotation_list(results, force=False):
     """Print a rotation checklist, optionally prompting first.
 
@@ -1474,6 +1513,7 @@ def offer_rotation_list(results, force=False):
         return
     if force:
         print(f"\n{format_rotation_list(rotation)}")
+        prompt_save_rotation(rotation)
         return
     if sys.stdout.isatty():
         try:
@@ -1482,6 +1522,7 @@ def offer_rotation_list(results, force=False):
             return
         if answer.lower() == "y":
             print(f"\n{format_rotation_list(rotation)}")
+            prompt_save_rotation(rotation)
 
 
 def cmd_scan(args):
