@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections import Counter
 from datetime import datetime, timezone
@@ -685,7 +686,14 @@ def scrub_targets(targets, patterns, aggressive=False):
                 continue
             scrubbed = redact_secrets(original, patterns, aggressive=aggressive)
             if scrubbed != original:
-                filepath.write_text(scrubbed)
+                tmp_fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix=".tmp")
+                try:
+                    with os.fdopen(tmp_fd, "w") as tmp_f:
+                        tmp_f.write(scrubbed)
+                    os.replace(tmp_path, filepath)
+                except BaseException:
+                    os.unlink(tmp_path)
+                    raise
                 cat_files += 1
                 cat_secrets += len(find_secrets(original, patterns))
         stats["categories"][category] = {"secrets": cat_secrets, "files": cat_files}

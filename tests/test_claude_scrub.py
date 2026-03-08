@@ -504,6 +504,17 @@ class TestScrubCommand(unittest.TestCase):
 
         self.assertEqual(content_after_first, content_after_second)
 
+    def test_scrub_uses_atomic_write(self):
+        """Scrub should write to temp file then rename, not write in-place."""
+        import unittest.mock
+
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        with unittest.mock.patch("os.replace") as mock_replace:
+            cs.scrub_targets(targets, patterns)
+            # os.replace should have been called for files that had secrets
+            self.assertGreater(mock_replace.call_count, 0)
+
 
 class TestCustomPatterns(unittest.TestCase):
     def setUp(self):
