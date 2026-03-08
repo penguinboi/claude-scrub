@@ -999,6 +999,14 @@ def filter_and_group(sessions, days, show_all, min_messages):
 # ---------------------------------------------------------------------------
 
 
+def positive_int(value):
+    """Argparse type for positive integers."""
+    ivalue = int(value)
+    if ivalue <= 0:
+        raise argparse.ArgumentTypeError(f"{value} is not a positive integer")
+    return ivalue
+
+
 def parse_args(argv=None):
     """Parse command-line arguments using argparse with subcommands."""
     parser = argparse.ArgumentParser(
@@ -1036,7 +1044,10 @@ def parse_args(argv=None):
     sessions_parser = subparsers.add_parser("sessions", help="List and resume sessions")
     sessions_parser.add_argument("--latest", action="store_true", help="Show only the most recent session per project")
     sessions_parser.add_argument(
-        "--days", type=int, default=DEFAULT_DAYS, help=f"Show sessions from the last N days (default: {DEFAULT_DAYS})"
+        "--days",
+        type=positive_int,
+        default=DEFAULT_DAYS,
+        help=f"Show sessions from the last N days (default: {DEFAULT_DAYS})",
     )
     sessions_parser.add_argument("--all", action="store_true", help="Show all sessions regardless of age")
     sessions_parser.add_argument(

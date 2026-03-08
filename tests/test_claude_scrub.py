@@ -62,6 +62,16 @@ def test_sessions_days_flag():
     assert args.days == 7
 
 
+def test_sessions_negative_days_rejected():
+    with pytest.raises(SystemExit):
+        cs.parse_args(["sessions", "--days", "-5"])
+
+
+def test_sessions_zero_days_rejected():
+    with pytest.raises(SystemExit):
+        cs.parse_args(["sessions", "--days", "0"])
+
+
 def test_scan_rotation_list_flag():
     args = cs.parse_args(["scan", "--rotation-list"])
     assert args.rotation_list is True
