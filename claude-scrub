@@ -676,6 +676,9 @@ def load_scan_cache():
         file_results = {}
         for filepath_str, matches_data in cat_data.get("files", {}).items():
             filepath = Path(filepath_str)
+            # Re-validate: skip paths that are now symlinks or no longer regular files
+            if filepath.is_symlink() or not filepath.is_file():
+                continue
             matches = [
                 (m["name"], m.get("match", "(redacted)"), m["line"], m.get("tier", "specific")) for m in matches_data
             ]

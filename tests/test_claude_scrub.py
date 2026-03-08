@@ -1652,6 +1652,29 @@ class TestScanCache(unittest.TestCase):
         finally:
             cs.SCAN_CACHE_FILE = original_cache
 
+    def test_load_cache_skips_symlinked_paths(self):
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results = cs.scan_targets(targets, patterns)
+        cache_file = self.tmpdir / "test-cache.json"
+        original_cache = cs.SCAN_CACHE_FILE
+        cs.SCAN_CACHE_FILE = cache_file
+        try:
+            cs.save_scan_cache(results, targets)
+            # Replace the secret file with a symlink
+            sensitive = self.tmpdir / "sensitive.txt"
+            sensitive.write_text("do not read")
+            self.secret_file.unlink()
+            self.secret_file.symlink_to(sensitive)
+            loaded_results, _ = cs.load_scan_cache()
+            # Symlinked file should be excluded from loaded results
+            all_paths = []
+            for cat_results in loaded_results.values():
+                all_paths.extend(cat_results.keys())
+            self.assertNotIn(self.secret_file, all_paths)
+        finally:
+            cs.SCAN_CACHE_FILE = original_cache
+
     def test_load_cache_returns_none_when_missing(self):
         cache_file = self.tmpdir / "nonexistent-cache.json"
         original_cache = cs.SCAN_CACHE_FILE
