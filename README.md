@@ -191,7 +191,7 @@ Cached at `~/.config/claude-scrub/patterns-db/gitleaks.toml`.
 
 ## Requirements
 
-- Python 3.6+ (standard library only, no `pip install`)
+- Python 3.8+ (standard library only, no `pip install`)
 - Claude Code installed (`~/.claude/` directory)
 
 ## Development
