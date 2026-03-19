@@ -1447,7 +1447,7 @@ class TestFormatStats(unittest.TestCase):
             "total_assistant_messages": 2788,
             "first_session_date": "2025-06-14",
             "disk_usage_bytes": 888_000_000,
-            "most_active_project": "~/Code/regrade3",
+            "most_active_project": "~/Code/curtail/regrade3",
             "most_active_project_sessions": 34,
             "most_active_project_messages": 1204,
             "biggest_file_name": "regrade3/abc123.jsonl",
