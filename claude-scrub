@@ -140,6 +140,11 @@ def get_builtin_patterns():
             "regex": re.compile(r"(?:vercel)[\w.-]{0,20}[\s:=]+['\"]?[A-Za-z0-9]{24,}", re.IGNORECASE),
             "tier": "specific",
         },
+        {
+            "name": "PostHog Personal API Key",
+            "regex": re.compile(r"\bphx_[A-Za-z0-9]{40,}"),
+            "tier": "specific",
+        },
         # --- Social / media ---
         {"name": "Facebook Access Token", "regex": re.compile(r"EAACEdEose0cBA[0-9A-Za-z]+"), "tier": "specific"},
         {

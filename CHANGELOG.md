@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **PostHog Personal API Key pattern** — detects `phx_` personal keys (specific tier). Project keys (`phc_...`) are intentionally excluded since they're public by design.
+
 ## [0.1.0] — 2026-03-08
 
 First public release.
