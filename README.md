@@ -157,13 +157,15 @@ Scan always covers everything so you see the full picture. Scrub defaults to ses
 | Cloud | Specific | AWS access keys (`AKIA`), GCP, Azure |
 | Payment | Specific | Stripe (`sk_live_`), Square, PayPal/Braintree |
 | Communication | Specific | Slack (`xoxb-`), Discord, Twilio, SendGrid, Mailchimp, Mailgun |
-| Dev platforms | Specific | GitHub (`ghp_`), GitLab (`glpat-`), npm, PyPI, Heroku, Datadog, Vercel |
+| Dev platforms | Specific | GitHub (`ghp_`), GitLab (`glpat-`), npm, PyPI, Heroku, Datadog, Vercel, PostHog personal keys (`phx_`) |
 | Crypto material | Specific | Private keys (RSA/DSA/EC/PGP), JWT tokens |
 | Credit cards | Specific | Luhn-validated card numbers (Visa, Mastercard, Amex, etc.) |
 | Auth headers | Specific | Bearer tokens, `Authorization:` headers, credentials in URLs |
 | Generic catch-all | Generic | `password=`/`api_key=`/`credential=` assignments |
 
 Patterns sourced from [gitleaks](https://github.com/gitleaks/gitleaks) and [secret-regex-list](https://github.com/h33tlit/secret-regex-list).
+
+PostHog project keys (`phc_...`) are intentionally not flagged — they're public by design, embedded in every web page that uses PostHog.
 
 ### Custom patterns
 

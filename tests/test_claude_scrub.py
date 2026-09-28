@@ -1872,3 +1872,60 @@ class TestMainExceptionHandler(unittest.TestCase):
         self.assertIn("boom", buf.getvalue())
         # Should NOT contain raw traceback lines
         self.assertNotIn("Traceback", buf.getvalue())
+
+
+class TestPostHogKeyPattern(unittest.TestCase):
+    """PostHog personal API keys (phx_...) are secrets; project keys (phc_...) are public by design."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.claude_dir = Path(self.tmpdir) / ".claude"
+        self.no_ccrider = Path(self.tmpdir) / "no-ccrider.db"
+        proj = self.claude_dir / "projects" / "-Users-test-Code-myapp"
+        proj.mkdir(parents=True)
+        self.session_file = proj / "abc123.jsonl"
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_personal_key_is_flagged_specific(self):
+        fake_key = "phx_" + "A1b2" * 12  # 52 chars total, matches the real key's length
+        text = f"my PostHog personal key is {fake_key}"
+        patterns = cs.get_builtin_patterns()
+        matches = cs.find_secrets(text, patterns)
+        names = [m[0] for m in matches]
+        self.assertIn("PostHog Personal API Key", names)
+        match = next(m for m in matches if m[0] == "PostHog Personal API Key")
+        self.assertEqual(match[3], "specific")
+
+    def test_short_phx_string_not_flagged(self):
+        text = "the placeholder value is phx_abc"
+        patterns = cs.get_builtin_patterns()
+        matches = cs.find_secrets(text, patterns)
+        names = [m[0] for m in matches]
+        self.assertNotIn("PostHog Personal API Key", names)
+
+    def test_project_key_not_flagged(self):
+        """phc_ project keys are public by design (embedded in every page using PostHog)."""
+        fake_project_key = "phc_" + "A1b2" * 12
+        text = f"posthog.init('{fake_project_key}', {{api_host: 'https://us.i.posthog.com'}})"
+        patterns = cs.get_builtin_patterns()
+        matches = cs.find_secrets(text, patterns)
+        names = [m[0] for m in matches]
+        self.assertNotIn("PostHog Personal API Key", names)
+
+    def test_personal_key_detected_and_scrubbed_end_to_end(self):
+        fake_key = "phx_" + "A1b2" * 12
+        self.session_file.write_text(f'{{"message":"posthog key is {fake_key}"}}\n{{"message":"clean line"}}\n')
+
+        patterns = cs.get_builtin_patterns()
+        targets = cs.discover_targets(self.claude_dir, ccrider_db=self.no_ccrider)
+        results = cs.scan_targets(targets, patterns)
+        total = sum(len(m) for m in results["sessions"].values())
+        self.assertGreaterEqual(total, 1)
+
+        cs.scrub_targets(targets, patterns)
+        content = self.session_file.read_text()
+        self.assertNotIn(fake_key, content)
+        self.assertIn("[REDACTED:PostHog Personal API Key]", content)
+        self.assertIn("clean line", content)
